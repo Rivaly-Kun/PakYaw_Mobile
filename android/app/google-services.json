@@ -1,0 +1,99 @@
+{
+  "project_info": {
+    "project_number": "704173359839",
+    "firebase_url": "https://ride-hailing-app-68e81-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "ride-hailing-app-68e81",
+    "storage_bucket": "ride-hailing-app-68e81.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:704173359839:android:3e5ccd283b01670dfb5f6a",
+        "android_client_info": {
+          "package_name": "com.example.pakyaw"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "704173359839-753runckuc9s3akepnp64f9gv4kcjkbs.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pakyaw",
+            "certificate_hash": "36bb02233d8fa0f41de69bbcb004dc04450e14f9"
+          }
+        },
+        {
+          "client_id": "704173359839-7nt9aq5k62j12jlqv04fr573l59unqq6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCktX1ob4acTROgV1-hdSgXiSwZwREe3X4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "704173359839-7nt9aq5k62j12jlqv04fr573l59unqq6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "704173359839-gfgu05u2cce8g6iulcvpn3ivepenadgh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pakyaw"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:704173359839:android:3307008fae6a085dfb5f6a",
+        "android_client_info": {
+          "package_name": "com.example.pakyaw_driver"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "704173359839-p1dsnvso3ctctlu7a9gi8c6n3am8d9s8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pakyaw_driver",
+            "certificate_hash": "36bb02233d8fa0f41de69bbcb004dc04450e14f9"
+          }
+        },
+        {
+          "client_id": "704173359839-7nt9aq5k62j12jlqv04fr573l59unqq6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCktX1ob4acTROgV1-hdSgXiSwZwREe3X4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "704173359839-7nt9aq5k62j12jlqv04fr573l59unqq6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "704173359839-gfgu05u2cce8g6iulcvpn3ivepenadgh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pakyaw"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
