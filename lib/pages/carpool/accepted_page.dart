@@ -3,6 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:pakyaw/pages/carpool/carpool_page.dart';
+
+import '../home/home.dart';
 
 class AcceptedPage extends StatefulWidget {
   const AcceptedPage({Key? key}) : super(key: key);
@@ -13,6 +16,375 @@ class AcceptedPage extends StatefulWidget {
 
 class _AcceptedPageState extends State<AcceptedPage> {
   String? currentCarpoolId;
+  bool hasConfirmed = false;
+  bool isConfirming = false;
+  String? previousStatus; // Track previous status to detect changes
+
+  Future<bool> _checkUserConfirmation(String carpoolId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    try {
+      final joinedDoc = await FirebaseFirestore.instance
+          .collection('carpools')
+          .doc(carpoolId)
+          .collection('joined')
+          .doc(user.uid)
+          .get();
+
+      if (joinedDoc.exists) {
+        final data = joinedDoc.data();
+        return data?['confirmed'] == true;
+      }
+    } catch (e) {
+      debugPrint("Error checking confirmation: $e");
+    }
+    return false;
+  }
+
+  Future<void> _showTripStartWarning(BuildContext context, String carpoolId, int passengerCount, int capacity, double splitFare) async {
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber, color: Colors.orange),
+            SizedBox(width: 10),
+            Text("Trip Starting"),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "The driver is starting the trip now!",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              "Only $passengerCount out of $capacity seats are filled.",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Text("Your fare: ₱${splitFare.toStringAsFixed(2)}"),
+            const SizedBox(height: 5),
+            Text(
+              "This is higher than if all seats were filled.",
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              "Do you want to continue with this trip, or leave now?",
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              "Leave Trip",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text("Continue Trip"),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldContinue != true) {
+      // User chose to leave - remove them from carpool
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('carpools')
+              .doc(carpoolId)
+              .collection('joined')
+              .doc(user.uid)
+              .delete();
+
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("You have left the trip")),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error leaving trip: $e")),
+          );
+        }
+      }
+    }
+  }
+// NEW: Report submission functions
+  Future<void> _submitReport(String carpoolId, String driverId, String driverName) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final reasons = [
+      'Unsafe Driving',
+      'Rude Behavior',
+      'Vehicle Condition',
+      'Route Deviation',
+      'Overcharging',
+      'No-Show',
+      'Other',
+    ];
+
+    String? reportReason;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Report Driver"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Select a reason:", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              ...reasons.map((reason) => RadioListTile<String>(
+                title: Text(reason),
+                value: reason,
+                groupValue: reportReason,
+                onChanged: (value) {
+                  Navigator.pop(context);
+                  _showMessageDialog(carpoolId, driverId, driverName, value!);
+                },
+                contentPadding: EdgeInsets.zero,
+              )).toList(),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showMessageDialog(String carpoolId, String driverId, String driverName, String reason) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final messageController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Report: $reason"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Reporting driver: $driverName"),
+            const SizedBox(height: 15),
+            TextField(
+              controller: messageController,
+              decoration: const InputDecoration(
+                labelText: "Additional details (optional)",
+                hintText: "Describe what happened...",
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 4,
+              maxLength: 500,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("Submit Report"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await FirebaseFirestore.instance.collection('UserReports').add({
+          'createdAt': Timestamp.now(),
+          'message': messageController.text.trim().isEmpty
+              ? 'Passenger-${user.uid} reported Driver-$driverId for: $reason (Trip-$carpoolId)'
+              : '${messageController.text.trim()} (Passenger-${user.uid} reported Driver-$driverId for: $reason, Trip-$carpoolId)',
+          'resolve': false,
+          'severity': _getSeverityLevel(reason),
+          'tag': 'Driver Report',
+          'user_id': user.uid,
+          'user_type': 'passenger',
+          'reported_user_id': driverId,
+          'reported_user_type': 'driver',
+          'carpool_id': carpoolId,
+          'reason': reason,
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 10),
+                  Text("Report submitted successfully"),
+                ],
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error submitting report: $e")),
+          );
+        }
+      }
+    }
+  }
+
+  int _getSeverityLevel(String reason) {
+    switch (reason) {
+      case 'Unsafe Driving':
+        return 3;
+      case 'Rude Behavior':
+        return 2;
+      case 'Vehicle Condition':
+        return 2;
+      case 'Route Deviation':
+        return 1;
+      case 'Overcharging':
+        return 2;
+      case 'No-Show':
+        return 3;
+      default:
+        return 1;
+    }
+  }
+  Future<void> _confirmRide(String carpoolId, int passengerCount, int capacity, double splitFare) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() => isConfirming = true);
+
+    try {
+      // Show warning if passenger count is low
+      if (passengerCount < capacity) {
+        final shouldContinue = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: const [
+                Icon(Icons.warning_amber, color: Colors.orange),
+                SizedBox(width: 10),
+                Text("Fare Warning"),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Only $passengerCount out of $capacity seats are filled.",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                Text("Your fare will be: ₱${splitFare.toStringAsFixed(2)}"),
+                const SizedBox(height: 5),
+                Text(
+                  "This is higher than if all seats were filled. The driver may start the trip soon.",
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 15),
+                const Text(
+                  "Do you agree to continue with this fare?",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  "Leave Carpool",
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: const Text("I Agree"),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldContinue != true) {
+          // User declined - remove them from carpool
+          await FirebaseFirestore.instance
+              .collection('carpools')
+              .doc(carpoolId)
+              .collection('joined')
+              .doc(user.uid)
+              .delete();
+
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("You have left the carpool")),
+            );
+          }
+          return;
+        }
+      }
+
+      // User confirmed - update their status
+      await FirebaseFirestore.instance
+          .collection('carpools')
+          .doc(carpoolId)
+          .collection('joined')
+          .doc(user.uid)
+          .update({
+        'confirmed': true,
+        'confirmedAt': Timestamp.now(),
+      });
+
+      setState(() {
+        hasConfirmed = true;
+        isConfirming = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Ride confirmed!")),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
+      }
+    } finally {
+      setState(() => isConfirming = false);
+    }
+  }
 
   Future<Map<String, dynamic>?> _getAcceptedCarpool() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -153,25 +525,51 @@ class _AcceptedPageState extends State<AcceptedPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Your Carpool"),
-        backgroundColor: Colors.blue,
-      ),
-      body: FutureBuilder<Map<String, dynamic>?>(
-        future: _getAcceptedCarpool(),
-        builder: (context, initialSnapshot) {
-          if (initialSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return WillPopScope(
+      onWillPop: () async {
+        // Navigate to Home when back button is pressed
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => Home(id: user.uid)),
+                (route) => false,
+          );
+        }
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Your Carpool"),
+          backgroundColor: Colors.blue,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              // Navigate to Home when AppBar back button is pressed
+              final user = FirebaseAuth.instance.currentUser;
+              if (user != null) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => Home(id: user.uid)),
+                      (route) => false,
+                );
+              }
+            },
+          ),
+        ),
+        // ... rest of your code
+          body: FutureBuilder<Map<String, dynamic>?>(
+            future: _getAcceptedCarpool(),
+            builder: (context, initialSnapshot) {
+              if (initialSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (!initialSnapshot.hasData || initialSnapshot.data == null) {
-            return const Center(
-              child: Text("No accepted carpool found."),
-            );
-          }
+              if (!initialSnapshot.hasData || initialSnapshot.data == null) {
+                return const Center(
+                  child: Text("No accepted carpool found."),
+                );
+              }
 
-          final carpoolId = initialSnapshot.data!['carpoolId'] as String;
+              final carpoolId = initialSnapshot.data!['carpoolId'] as String;
 
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
@@ -179,57 +577,56 @@ class _AcceptedPageState extends State<AcceptedPage> {
                 .doc(carpoolId)
                 .snapshots(),
             builder: (context, carpoolSnapshot) {
-              // Add loading state
               if (carpoolSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              // Check if carpool was deleted (trip ended)
               if (!carpoolSnapshot.hasData || !carpoolSnapshot.data!.exists) {
-                // Use a flag to prevent multiple dialogs
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && Navigator.canPop(context)) {
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => WillPopScope(
-                        onWillPop: () async => false,
-                        child: AlertDialog(
-                          title: const Text("Trip Completed"),
-                          content: const Text(
-                            "Your carpool trip has ended. Thank you for riding with us!",
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).pop(); // Close dialog
-                                Navigator.of(context).pop(); // Go back to dashboard
-                              },
-                              child: const Text("OK"),
-                            ),
-                          ],
+                  if (mounted) {
+                    // Get the current user ID
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      // Navigate to Home widget with Carpool tab (index 1)
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => Home(id: user.uid),
                         ),
-                      ),
-                    );
+                            (route) => false,
+                      );
+
+                      // Show success message after navigation
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.white),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Trip completed! Thank you for riding with us.',
+                                      style: TextStyle(fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      });
+                    }
                   }
                 });
 
                 return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle, size: 80, color: Colors.green),
-                      SizedBox(height: 20),
-                      Text(
-                        "Trip Completed!",
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
+                  child: CircularProgressIndicator(),
                 );
               }
 
-              // Add error handling
               if (carpoolSnapshot.hasError) {
                 return Center(
                   child: Text("Error loading trip: ${carpoolSnapshot.error}"),
@@ -238,33 +635,47 @@ class _AcceptedPageState extends State<AcceptedPage> {
 
               final carpool = carpoolSnapshot.data!.data() as Map<String, dynamic>?;
 
-              // Check if data is null
               if (carpool == null) {
                 return const Center(
                   child: Text("Carpool data not available"),
                 );
               }
-              final driverId = carpool['driverId'] as String?;
 
+              final currentStatus = carpool['status'] as String?;
+              final capacity = carpool['capacity'] ?? 0;
+              final fare = (carpool['fare'] ?? 0).toDouble();
+
+              // Detect status change from 'waiting' to 'in-progress'
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (previousStatus == 'waiting' && currentStatus == 'in-progress') {
+                  // Trip just started, check if seats are not full
+                  final passengers = await _getPassengers(carpoolId);
+                  final passengerCount = passengers.length;
+
+                  if (passengerCount < capacity && mounted) {
+                    final splitFare = _calculateSplitFare(fare, passengerCount);
+                    _showTripStartWarning(context, carpoolId, passengerCount, capacity, splitFare);
+                  }
+                }
+                previousStatus = currentStatus;
+              });
+
+              final driverId = carpool['driverId'] as String?;
               final pickup = carpool['pickup']?['name'] ?? 'Unknown pickup';
               final dropoff = carpool['dropoff']?['name'] ?? 'Unknown dropoff';
-              final fare = (carpool['fare'] ?? 0).toDouble();
               final distance = (carpool['distance_km'] ?? 0).toDouble();
-              final capacity = carpool['capacity'] ?? 0;
-              final status = carpool['status'] as String?;
               final plateNum = carpool['plate_num'] ?? 'N/A';
               final vehicleModel = carpool['vehicleModel'] ?? 'Unknown';
 
               return SingleChildScrollView(
                 child: Column(
                   children: [
-                    // Trip Status Banner
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
-                      color: _getStatusColor(status),
+                      color: _getStatusColor(currentStatus),
                       child: Text(
-                        _getTripStatus(status),
+                        _getTripStatus(currentStatus),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -274,7 +685,6 @@ class _AcceptedPageState extends State<AcceptedPage> {
                       ),
                     ),
 
-                    // Route Info
                     Container(
                       padding: const EdgeInsets.all(20),
                       child: Column(
@@ -310,7 +720,7 @@ class _AcceptedPageState extends State<AcceptedPage> {
                             ],
                           ),
                           const SizedBox(height: 20),
-                          // Fare, Distance, Passengers Counter with Split Fare
+
                           FutureBuilder<List<Map<String, dynamic>>>(
                             future: _getPassengers(carpoolId),
                             builder: (context, passengerSnapshot) {
@@ -381,6 +791,71 @@ class _AcceptedPageState extends State<AcceptedPage> {
                                       ),
                                     ),
                                   ],
+
+                                  // CONFIRMATION BUTTON
+                                  if (currentStatus == 'waiting')
+                                    FutureBuilder<bool>(
+                                      future: _checkUserConfirmation(carpoolId),
+                                      builder: (context, confirmSnapshot) {
+                                        final isConfirmed = confirmSnapshot.data ?? false;
+
+                                        if (isConfirmed) {
+                                          return Container(
+                                            margin: const EdgeInsets.only(top: 12),
+                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.check_circle, size: 20, color: Colors.green.shade700),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  "Ride Confirmed - Waiting for driver",
+                                                  style: TextStyle(
+                                                    color: Colors.green.shade700,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }
+
+                                        return Container(
+                                          margin: const EdgeInsets.only(top: 12),
+                                          child: ElevatedButton(
+                                            onPressed: isConfirming
+                                                ? null
+                                                : () => _confirmRide(
+                                              carpoolId,
+                                              passengerCount,
+                                              capacity,
+                                              splitFare,
+                                            ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.orange,
+                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                            ),
+                                            child: isConfirming
+                                                ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                color: Colors.white,
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                                : const Text(
+                                              "Confirm Ride & Fare",
+                                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                 ],
                               );
                             },
@@ -391,7 +866,6 @@ class _AcceptedPageState extends State<AcceptedPage> {
 
                     const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
 
-                    // Route Map Preview
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -501,7 +975,6 @@ class _AcceptedPageState extends State<AcceptedPage> {
 
                     const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
 
-                    // Driver Info
                     if (driverId != null)
                       FutureBuilder<Map<String, dynamic>?>(
                         future: _getDriverData(driverId),
@@ -577,6 +1050,13 @@ class _AcceptedPageState extends State<AcceptedPage> {
                                         );
                                       },
                                     ),
+                                    IconButton(
+                                      icon: const Icon(Icons.flag, color: Colors.red, size: 28),
+                                      onPressed: () {
+                                        _submitReport(carpoolId, driverId, driverName);
+                                      },
+                                      tooltip: "Report Driver",
+                                    ),
                                   ],
                                 ),
                               ],
@@ -587,7 +1067,6 @@ class _AcceptedPageState extends State<AcceptedPage> {
 
                     const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
 
-                    // Other Passengers
                     FutureBuilder<List<Map<String, dynamic>>>(
                       future: _getPassengers(carpoolId),
                       builder: (context, passengerSnapshot) {
@@ -667,7 +1146,6 @@ class _AcceptedPageState extends State<AcceptedPage> {
                       },
                     ),
 
-                    // Rejected Passengers Alert
                     FutureBuilder<int>(
                       future: _getRejectedCount(carpoolId),
                       builder: (context, rejectedSnapshot) {
@@ -703,8 +1181,7 @@ class _AcceptedPageState extends State<AcceptedPage> {
 
                     const SizedBox(height: 20),
 
-                    // Cancel Button (only show if trip is waiting)
-                    if (status == 'waiting')
+                    if (currentStatus == 'waiting')
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                         child: SizedBox(
@@ -776,11 +1253,11 @@ class _AcceptedPageState extends State<AcceptedPage> {
           );
         },
       ),
+        ),
     );
   }
 }
 
-// Full Screen Map Page remains the same
 class FullScreenMapPage extends StatefulWidget {
   final double pickupLat;
   final double pickupLng;

@@ -18,38 +18,77 @@ class _NameChangeState extends ConsumerState<NameChange> {
   Widget build(BuildContext context) {
     final database = ref.watch(databaseServiceProvider);
     final user = ref.watch(authStateProvider).value;
-    return Form(
-      key: _formkey,
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Form(
+        key: _formkey,
         child: Column(
-          children: <Widget>[
-            const Text('Update your name', style: TextStyle(fontSize: 23.0, fontWeight: FontWeight.bold),),
-            const SizedBox(height: 15.0,),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Update Name',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
             TextFormField(
-              initialValue: widget.name ?? '',
-              decoration: const InputDecoration(
-                fillColor: Colors.white,
+              initialValue: widget.name,
+              decoration: InputDecoration(
+                labelText: 'Full Name',
+                prefixIcon: const Icon(Icons.person_outline),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 filled: true,
+                fillColor: Colors.grey[50],
               ),
               validator: (val) => val!.isEmpty ? 'Please enter name' : null,
-              onChanged: (val) => setState(() {
-                changeName = val;
-              }),
+              onChanged: (val) => setState(() => changeName = val),
             ),
-            const SizedBox(height: 20.0,),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
-              onPressed: () async {
-                if(_formkey.currentState!.validate()) {
-                  await database.updatePassengerName(user!.uid, changeName);
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Update', style: TextStyle(color: Colors.white, fontSize: 18.0),),
-
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (_formkey.currentState!.validate()) {
+                    await database.updatePassengerName(user!.uid, changeName);
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Save Changes',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
-
+      ),
     );
   }
 }

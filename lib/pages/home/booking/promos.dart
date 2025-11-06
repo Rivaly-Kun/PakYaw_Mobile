@@ -75,64 +75,66 @@ class PromoTile extends StatelessWidget {
     SizeConfig().init(context);
     DateTime startingDate = promoModel.startDate.toDate();
     DateTime endingDate = promoModel.endDate.toDate();
-    String formattedStartDate = DateFormat('MM/dd/yyyy').format(startingDate);
-    String formattedEndDate = DateFormat('MM/dd/yyyy').format(endingDate);
+    String formattedStartDate = DateFormat('MMM dd').format(startingDate);
+    String formattedEndDate = DateFormat('MMM dd').format(endingDate);
 
     return Container(
-      height: SizeConfig.blockSizeVertical * 10,
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Card(
         elevation: 2,
-        child: Row(
-          children: [
-            Expanded(
-              flex: 40,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '${(promoModel.discount * 100).toStringAsFixed(0)}% OFF',
-                    style: TextStyle(
-                        fontSize: SizeConfig.safeBlockHorizontal * 4,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w500
-                    ),
+        shadowColor: Colors.black26,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  SizedBox(
-                    height: SizeConfig.blockSizeVertical * 6,
-                    child: const VerticalDivider(),
-                  )
-                ],
-              ),
+                  child: Text(
+                    '${(promoModel.discount * 100).toStringAsFixed(0)}%\nOFF',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        promoModel.promoName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$formattedStartDate - $formattedEndDate',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            Expanded(
-              flex: 60,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 60,
-                    child: Text(
-                      promoModel.promoName,
-                      style: TextStyle(
-                          fontSize: SizeConfig.safeBlockHorizontal * 5,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 40,
-                    child: Text(
-                      'Start: $formattedStartDate, End: $formattedEndDate',
-                      style: TextStyle(
-                          fontSize: SizeConfig.safeBlockHorizontal * 3
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          ],
+          ),
         ),
       ),
     );

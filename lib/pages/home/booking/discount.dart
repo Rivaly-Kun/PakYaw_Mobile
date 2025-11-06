@@ -73,70 +73,121 @@ class _DiscountState extends ConsumerState<Discount> {
   }
 }
 
-class DiscountTile extends StatelessWidget {
+class DiscountTile extends StatefulWidget {
   final DiscountModel discountModel;
   const DiscountTile({super.key, required this.discountModel});
 
   @override
+  State<DiscountTile> createState() => _DiscountTileState();
+}
+
+class _DiscountTileState extends State<DiscountTile> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    return Container(
-      height: SizeConfig.blockSizeVertical * 10,
-      child: Card(
-        elevation: 2,
-        child: Row(
-          children: [
-            Container(
-              margin: EdgeInsets.only(left: SizeConfig.blockSizeHorizontal * 3),
-              child: Expanded(
-                flex: 40,
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) => _controller.reverse(),
+      onTapCancel: () => _controller.reverse(),
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) => Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Container(
+            height: SizeConfig.blockSizeVertical * 12,
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Card(
+              elevation: 2,
+              shadowColor: Colors.black26,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    Center(
-                      child: Text(
-                        '${(discountModel.discount * 100).toStringAsFixed(0)}% OFF',
-                        style: TextStyle(
-                            fontSize: SizeConfig.safeBlockHorizontal * 4,
-                            color: Colors.black,
-                            fontWeight: FontWeight.w500
-                        ),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${(widget.discountModel.discount * 100).toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                          const Text(
+                            'OFF',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    SizedBox(height: SizeConfig.blockSizeVertical * 6, child: const VerticalDivider(),)
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            widget.discountModel.discountName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.discountModel.description,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            Expanded(
-              flex: 60,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 60,
-                    child: Text(
-                      discountModel.discountName,
-                      style: TextStyle(
-                        overflow: TextOverflow.ellipsis,
-                          fontSize: SizeConfig.safeBlockHorizontal * 5,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 40,
-                    child: Text(
-                      discountModel.description,
-                      style: TextStyle(
-                          fontSize: SizeConfig.safeBlockHorizontal * 3
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          ],
+          ),
         ),
       ),
     );

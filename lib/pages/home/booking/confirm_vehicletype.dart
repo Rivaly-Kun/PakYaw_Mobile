@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,7 +22,7 @@ class ConfirmVehicletype extends ConsumerStatefulWidget {
   ConsumerState<ConfirmVehicletype> createState() => _ConfirmVehicletypeState();
 }
 
-class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> {
+class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> with TickerProviderStateMixin {
 
   DatabaseService database = DatabaseService();
   int? selectedCapacity = 1;
@@ -36,50 +37,148 @@ class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> {
   int? wheels;
   String error1 = '';
   String id = '';
+  bool isLoading = false;
+  late AnimationController _animationController;
+  late AnimationController _pulseController;
 
-  showWarning(BuildContext context1){
-    SizeConfig().init(context1);
-    showDialog(context: context, builder: (context) => AlertDialog(
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Icon(Icons.warning_outlined,color: Colors.yellow, size: SizeConfig.safeBlockHorizontal * 8,),
-            ),
-            Center(
-              child: Text(
-                'Warning',
-                style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold
-                ),
-              ),
-            ),
-            Center(
-              child: Text(
-                'Select a vehicle type',
-                style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 4,
-                    color: Colors.black,
-                    fontWeight: FontWeight.w400
-                ),
-              ),
-            )
-          ],
-        ),
-      ),
-    ));
-  }
+  // PAKYAW Brand Colors
+  static const Color primaryNavy = Color(0xFF0B2E6B);
+  static const Color brightBlue = Color(0xFF1C72DD);
+  static const Color lightBlue = Color(0xFF1B99FF);
+  static const Color darkGray = Color(0xFF303841);
+  static const Color lightBackground = Color(0xFFF3F3F3);
+  static const Color successGreen = Color(0xFF10B981);
+  static const Color warningOrange = Color(0xFFF59E0B);
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _animationController.forward();
+    _pulseController.repeat(reverse: true);
+
     ref.read(tripProvider.notifier).printTripDetails();
     final user = ref.read(authStateProvider).value;
     id = user!.uid;
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message, {bool isSuccess = true}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isSuccess ? Icons.check_circle : Icons.error,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: 'Montserrat',
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isSuccess ? successGreen : Colors.red[600],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  showWarning(BuildContext context1){
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [warningOrange, warningOrange.withOpacity(0.8)],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.warning_outlined,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Selection Required',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Montserrat',
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Please select a vehicle type to continue',
+            style: TextStyle(
+              fontSize: 16,
+              fontFamily: 'Montserrat',
+            ),
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryNavy, brightBlue],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Montserrat',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        )
+    );
   }
 
   getRouteInfo(LatLng origin, LatLng destination, String travelMode) async {
@@ -126,7 +225,6 @@ class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> {
     }else{
       throw Exception('Failed to get route information: $response');
     }
-
   }
 
   Duration parseDuration(String s) {
@@ -157,251 +255,710 @@ class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> {
     return points.map((point) => LatLng(point.latitude, point.longitude)).toList();
   }
 
+  Widget _buildCapacitySelector(data) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            lightBackground.withOpacity(0.5),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [primaryNavy, brightBlue],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.people,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                'How many passengers?',
+                style: TextStyle(
+                  fontSize: SizeConfig.safeBlockHorizontal * 5,
+                  fontWeight: FontWeight.w600,
+                  color: darkGray,
+                  fontFamily: 'Montserrat',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Container(
+            width: SizeConfig.blockSizeHorizontal * 60,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [lightBackground, Colors.white],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: brightBlue.withOpacity(0.3),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: brightBlue.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: DropdownButton<int>(
+                menuMaxHeight: 200.0,
+                underline: Container(),
+                elevation: 8,
+                borderRadius: BorderRadius.circular(12),
+                onChanged: (int? value){
+                  setState(() {
+                    selectedCapacity = value;
+                    selectedIndex = null;
+                    selectedVehicle = null;
+                  });
+                },
+                isExpanded: true,
+                value: selectedCapacity,
+                icon: Icon(
+                  Icons.keyboard_arrow_down,
+                  color: brightBlue,
+                  size: 24,
+                ),
+                style: TextStyle(
+                  fontSize: SizeConfig.safeBlockHorizontal * 4,
+                  fontWeight: FontWeight.w600,
+                  color: darkGray,
+                  fontFamily: 'Montserrat',
+                ),
+                items: List<int>.generate(data.capacity, (int index) => index + 1).map(
+                      (val) {
+                    return DropdownMenuItem<int>(
+                      value: val,
+                      child: Text(
+                        '$val ${val == 1 ? 'passenger' : 'passengers'}',
+                        style: TextStyle(
+                          fontSize: SizeConfig.safeBlockHorizontal * 4,
+                          fontWeight: FontWeight.w600,
+                          color: darkGray,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    );
+                  },
+                ).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVehicleCard(vehicleData, int index, bool isAvailable) {
+    final isSelected = selectedIndex == index;
+
+    return FadeTransition(
+      opacity: _animationController,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Interval(
+            index * 0.1,
+            1.0,
+            curve: Curves.easeOutCubic,
+          ),
+        )),
+        child: GestureDetector(
+          onTap: isAvailable
+              ? () {
+            setState(() {
+              selectedIndex = index;
+              selectedVehicle = vehicleData.type;
+              baseRate = vehicleData.baseRate;
+              ratePerKm = vehicleData.ratePerKm;
+              typeImage = vehicleData.image;
+              wheels = vehicleData.wheels;
+            });
+          }
+              : null,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Calculate dynamic sizing based on available space
+              final availableWidth = constraints.maxWidth;
+              final availableHeight = constraints.maxHeight;
+              final imageSize = math.min(availableWidth * 0.3, availableHeight * 0.35).clamp(30.0, 60.0);
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
+                constraints: BoxConstraints(
+                  minHeight: 120,
+                  maxHeight: availableHeight,
+                  minWidth: availableWidth,
+                  maxWidth: availableWidth,
+                ),
+                decoration: BoxDecoration(
+                  gradient: isSelected
+                      ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [primaryNavy, brightBlue],
+                  )
+                      : isAvailable
+                      ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white,
+                      lightBackground.withOpacity(0.5),
+                    ],
+                  )
+                      : LinearGradient(
+                    colors: [Colors.grey[200]!, Colors.grey[100]!],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isSelected
+                          ? brightBlue.withOpacity(0.25)
+                          : Colors.black.withOpacity(0.06),
+                      blurRadius: isSelected ? 8 : 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Selection indicator
+                    if (isSelected)
+                      Flexible(
+                        child: FadeTransition(
+                          opacity: _pulseController,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.25),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: const Icon(
+                              Icons.check_circle,
+                              color: Colors.white,
+                              size: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    if (isSelected) const SizedBox(height: 2),
+
+                    // Vehicle icon with flexible container
+                    Flexible(
+                      flex: 3,
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: imageSize + 16,
+                          maxHeight: imageSize + 16,
+                        ),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.white.withOpacity(0.2)
+                              : isAvailable
+                              ? lightBackground.withOpacity(0.5)
+                              : Colors.grey.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: Image.network(
+                            vehicleData.image,
+                            width: imageSize,
+                            height: imageSize,
+                            fit: BoxFit.contain,
+                            color: isSelected
+                                ? Colors.white
+                                : isAvailable
+                                ? null
+                                : Colors.grey,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.directions_car,
+                                size: imageSize,
+                                color: isSelected
+                                    ? Colors.white
+                                    : isAvailable
+                                    ? brightBlue
+                                    : Colors.grey,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    // Vehicle type text with proper constraints
+                    Flexible(
+                      child: Container(
+                        constraints: BoxConstraints(maxWidth: availableWidth - 16),
+                        child: Text(
+                          vehicleData.type,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : isAvailable
+                                ? darkGray
+                                : Colors.grey[600],
+                            fontSize: (SizeConfig.safeBlockHorizontal * 2.8).clamp(10.0, 14.0),
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Montserrat',
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 1),
+
+                    // Capacity text
+                    Flexible(
+                      child: Text(
+                        'Max: ${vehicleData.capacity}',
+                        style: TextStyle(
+                          color: isSelected
+                              ? Colors.white.withOpacity(0.8)
+                              : isAvailable
+                              ? Colors.grey[600]
+                              : Colors.grey[500],
+                          fontSize: (SizeConfig.safeBlockHorizontal * 2.4).clamp(9.0, 12.0),
+                          fontFamily: 'Montserrat',
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+
+                    // Unavailable badge with proper constraints
+                    if (!isAvailable)
+                      Flexible(
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          constraints: BoxConstraints(maxWidth: availableWidth - 20),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Unavailable',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: (SizeConfig.safeBlockHorizontal * 2.0).clamp(8.0, 10.0),
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Montserrat',
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicleTypes = ref.watch(vehicleTypesProvider);
     final maxCapacity = ref.watch(maxCapacityProvider);
     final trip = ref.watch(tripProvider);
+
     return vehicleTypes.when(
       data: (data) {
         return Scaffold(
+          backgroundColor: lightBackground,
           appBar: AppBar(
-            title: const Text(
-              'Vehicle Type',
+            elevation: 0,
+            backgroundColor: Colors.white,
+            leading: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryNavy, brightBlue],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+            title: Text(
+              'Choose Vehicle Type',
               style: TextStyle(
-                  fontSize: 20.0,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black
+                fontSize: SizeConfig.safeBlockHorizontal * 5,
+                fontWeight: FontWeight.w700,
+                color: darkGray,
+                fontFamily: 'Montserrat',
               ),
             ),
           ),
           body: Column(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+
+              // Capacity Selector
+              maxCapacity.when(
+                data: (capacityData) => _buildCapacitySelector(capacityData),
+                error: (e, error) => Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red[300]!),
+                  ),
+                  child: Row(
                     children: [
-                      const SizedBox(height: 10.0,),
-                      const Center(
-                        child: Text(
-                          'How many are riding?',
-                          style: TextStyle(
-                              fontSize: 20.0,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black
-                          ),
-                        ),
-                      ),
-                      maxCapacity.when(
-                        data: (data){
-                          return Center(
-                            child: SizedBox(
-                              width: SizeConfig.blockSizeHorizontal * 20,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10.0),
-                                    border: Border.all(color: Colors.black, width: 3.0),
-                                    color: Colors.white
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 10.0, right: 10.0),
-                                  child: DropdownButton(
-                                    menuMaxHeight: 200.0,
-                                    underline: Container(),
-                                    elevation: 0,
-                                    onChanged: (int? value){
-                                      setState(() {
-                                        selectedCapacity = value;
-                                      });
-                                    },
-                                    isExpanded: true,
-                                    alignment: Alignment.bottomCenter,
-                                    value: selectedCapacity,
-                                    icon: const Icon(Icons.keyboard_arrow_down),
-                                    //this is where I want to get the max capacity
-                                    items: List<int>.generate(data.capacity,
-                                            (int index) => index + 1).map(
-                                          (val) {
-                                        return DropdownMenuItem<int>(
-                                          value: val,
-                                          child: Text('$val'),
-                                        );
-                                      },
-                                    ).toList(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                        error: (e, error) => Text('Error: $e'),
-                        loading: () => const Loading(),
-                  
-                      ),
-                      const SizedBox(height: 50.0,),
+                      Icon(Icons.error, color: Colors.red[600]),
+                      const SizedBox(width: 12),
                       Expanded(
-                        child: Container(
-                          width: SizeConfig.screenWidth,
-                          padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 30.0),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10.0),
-                            color: Colors.white,
-                          ),
-                  
-                          child: Column(
-                            children: [
-                              Text(
-                                error1,
-                                style: TextStyle(
-                                  fontSize: SizeConfig.safeBlockHorizontal * 3,
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w500
-                                ),
-                              ),
-                              Expanded(
-                                child: GridView.builder(
-                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    crossAxisSpacing: 10.0,
-                                    mainAxisSpacing: 10.0,
-                                  ),
-                                  itemCount: data.length,
-                                  itemBuilder: (context, index) {
-                                    if(selectedCapacity! <= data[index].capacity){
-                                      return GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            selectedIndex = index;
-                                            selectedVehicle = data[index].type;
-                                            baseRate = data[index].baseRate;
-                                            ratePerKm = data[index].ratePerKm;
-                                            typeImage = data[index].image;
-                                            wheels = data[index].wheels;
-                                          });
-                                        },
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: selectedIndex == index ? Colors.grey[350] : Colors.white,
-                                            border: Border.all(
-                                              color: selectedIndex == index ? Colors.black : Colors.black,
-                                              width: 3.0,
-                                            ),
-                                            borderRadius: BorderRadius.circular(10.0),
-                                          ),
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: <Widget>[
-                                              Image(
-                                                image: NetworkImage(data[index].image),
-                                                height: 50.0,
-                                                width: 50.0,
-                                                fit: BoxFit.contain,
-                                              ),
-                                              const SizedBox(height: 10.0,),
-                                              Text(
-                                                data[index].type,
-                                                style: const TextStyle(
-                                                  color: Colors.black,
-                                                  fontSize: 15.0,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }else{
-                                      if(selectedVehicle == data[index].type){
-                                        selectedVehicle = null;
-                                      }
-                                      return GestureDetector(
-                                        onTap: () {
-                                        },
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey[100],
-                                            border: Border.all(
-                                              color: Colors.black54,
-                                              width: 3.0,
-                                            ),
-                                            borderRadius: BorderRadius.circular(10.0),
-                                          ),
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: <Widget>[
-                                              Image(
-                                                image: NetworkImage(data[index].image),
-                                                height: SizeConfig.blockSizeVertical * 7,
-                                                width: SizeConfig.blockSizeHorizontal * 10,
-                                                color: Colors.black54,
-                                                fit: BoxFit.contain,
-                                              ),
-                                              const SizedBox(height: 10.0,),
-                                              Text(
-                                                data[index].type,
-                                                style: const TextStyle(
-                                                  color: Colors.black54,
-                                                  fontSize: 15.0,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
-                              ),
-                            ],
+                        child: Text(
+                          'Error loading capacity: $e',
+                          style: TextStyle(
+                            color: Colors.red[600],
+                            fontFamily: 'Montserrat',
                           ),
                         ),
-                      )
+                      ),
                     ],
                   ),
                 ),
-                Container(
+                loading: () => Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.white, lightBackground.withOpacity(0.5)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      CircularProgressIndicator(
+                        color: brightBlue,
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        'Loading capacity options...',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // Vehicle Types Section
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white,
+                        lightBackground.withOpacity(0.5),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [primaryNavy, brightBlue],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.directions_car,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            'Available Vehicles',
+                            style: TextStyle(
+                              fontSize: SizeConfig.safeBlockHorizontal * 5,
+                              fontWeight: FontWeight.w600,
+                              color: darkGray,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      if (error1.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red[300]!),
+                          ),
+                          child: Text(
+                            error1,
+                            style: TextStyle(
+                              fontSize: SizeConfig.safeBlockHorizontal * 3.5,
+                              color: Colors.red[600],
+                              fontWeight: FontWeight.w500,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 24),
+
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            // Filter available vehicles based on selected capacity
+                            final availableVehicles = data.where((vehicle) =>
+                            selectedCapacity! <= vehicle.capacity).toList();
+
+                            // Show message if no vehicles are available
+                            if (availableVehicles.isEmpty) {
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      size: 64,
+                                      color: Colors.grey[400],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'No vehicles available for ${selectedCapacity!} ${selectedCapacity! == 1 ? 'passenger' : 'passengers'}',
+                                      style: TextStyle(
+                                        fontSize: SizeConfig.safeBlockHorizontal * 4,
+                                        color: Colors.grey[600],
+                                        fontFamily: 'Montserrat',
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Please select a lower passenger count',
+                                      style: TextStyle(
+                                        fontSize: SizeConfig.safeBlockHorizontal * 3.5,
+                                        color: Colors.grey[500],
+                                        fontFamily: 'Montserrat',
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+
+                            return GridView.builder(
+                              physics: const BouncingScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 8.0,
+                                mainAxisSpacing: 8.0,
+                                childAspectRatio: constraints.maxWidth > 600 ? 0.85 : 0.75,
+                              ),
+                              itemCount: data.length,
+                              itemBuilder: (context, index) {
+                                final isAvailable = selectedCapacity! <= data[index].capacity;
+
+                                return _buildVehicleCard(data[index], index, isAvailable);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Confirm Button
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
                   color: Colors.white,
-                  padding: const EdgeInsets.all(22.0),
-                  child: SizedBox(
-                    height: SizeConfig.blockSizeVertical * 8,
-                    width: SizeConfig.screenWidth,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 15,
+                      offset: const Offset(0, -5),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  height: SizeConfig.blockSizeVertical * 7,
+                  width: double.infinity,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [primaryNavy, brightBlue, lightBlue],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: brightBlue.withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
-                      onPressed: () async {
-                        double vatTax = await database.getVatTax();
-                        double ccTax = await database.getCCTax();
-                        double fare = 0;
-                        double basekm = await database.getBaseKm();
-                        double charge = await database.getPassengerCharge(id);
-
-                        if(wheels! <= 3){
-                          print('TWO_WHEELER');
-                          await getRouteInfo(LatLng(trip.pickupLoc!.latitude, trip.pickupLoc!.longitude),
-                             LatLng(trip.dropOffLoc!.latitude, trip.dropOffLoc!.longitude), 'TWO_WHEELER');
-                          ref.read(tripProvider.notifier).updateTrip((trip) => trip.copyWith(travelMode: 'TWO_WHEELER'));
-                          print('result of fare: ${distance! < basekm}');
-                          if(distance! < basekm){
-                            fare = baseRate!.toDouble();
-                          }else{
-                            fare = baseRate! + ((distance! - 1) * ratePerKm!);
-                          }
-                        }else{
-                          print('Drive');
-                          await getRouteInfo(LatLng(trip.pickupLoc!.latitude, trip.pickupLoc!.longitude),
-                              LatLng(trip.dropOffLoc!.latitude, trip.dropOffLoc!.longitude), 'DRIVE');
-                          ref.read(tripProvider.notifier).updateTrip((trip) => trip.copyWith(travelMode: 'DRIVE'));
-                          print('result of fare: ${distance! < basekm}');
-                          if(distance! < basekm){
-                            fare = baseRate!.toDouble();
-                          }else{
-                            fare = baseRate! + ((distance! - 1) * ratePerKm!);
-                          }
+                      onPressed: isLoading ? null : () async {
+                        // Validate vehicle selection first
+                        if (selectedVehicle == null) {
+                          showWarning(context);
+                          return;
                         }
-                        if(selectedVehicle != null) {
-                          ref.read(tripProvider.notifier).updateTrip((trip) =>  trip.copyWith(
+
+                        // Validate that trip locations exist
+                        if (trip.pickupLoc == null || trip.dropOffLoc == null) {
+                          _showSnackBar("Location data is missing. Please go back and select locations again.", isSuccess: false);
+                          return;
+                        }
+
+                        setState(() {
+                          isLoading = true;
+                        });
+
+                        try {
+                          // Fetch required data
+                          double ccTax = 0.0;
+                          try {
+                            ccTax = await database.getCCTax();
+                          } catch (e) {
+                            print('Warning: Could not fetch CC Tax, using default value 0.0: $e');
+                          }
+
+                          double basekm = await database.getBaseKm();
+                          double charge = await database.getPassengerCharge(id);
+
+                          double fare = 0;
+                          String travelMode = wheels! <= 3 ? 'TWO_WHEELER' : 'DRIVE';
+
+                          print('Travel Mode: $travelMode');
+
+                          // Get route information
+                          await getRouteInfo(
+                              LatLng(trip.pickupLoc!.latitude, trip.pickupLoc!.longitude),
+                              LatLng(trip.dropOffLoc!.latitude, trip.dropOffLoc!.longitude),
+                              travelMode
+                          );
+
+                          // Validate that route info was successfully retrieved
+                          if (duration == null || routePoints == null || distance == null) {
+                            if (mounted) {
+                              _showSnackBar("Failed to calculate route. Please try again.", isSuccess: false);
+                            }
+                            return;
+                          }
+
+                          // Calculate fare
+                          print('Distance: $distance km, Base km: $basekm');
+                          if (distance! < basekm) {
+                            fare = baseRate!.toDouble();
+                          } else {
+                            fare = baseRate! + ((distance! - basekm) * ratePerKm!);
+                          }
+
+                          print('Calculated fare: $fare');
+
+                          // Update trip provider (VAT removed, set to 0)
+                          ref.read(tripProvider.notifier).updateTrip((trip) => trip.copyWith(
                             vehicleType: selectedVehicle,
                             baseRate: baseRate,
                             ratePerKm: ratePerKm,
@@ -409,22 +966,73 @@ class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> {
                             duration: duration,
                             route: routePoints,
                             distance: distance,
-                            vatTax: vatTax,
+                            vatTax: 0.0,  // VAT REMOVED
                             ccTax: ccTax,
+                            travelMode: travelMode,
                             fare: double.parse((fare + charge).toStringAsFixed(2)),
                           ));
-                          Navigator.push(context, MaterialPageRoute(
-                              builder: (context) => ConfirmTripPage()));
-                        }else{
-                          showWarning(context);
+
+                          // Navigate to next screen
+                          if (mounted) {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ConfirmTripPage())
+                            );
+                          }
+
+                        } catch (e) {
+                          print('Error in confirm vehicle: $e');
+
+                          // Show error message to user
+                          if (mounted) {
+                            _showSnackBar("Error: ${e.toString()}", isSuccess: false);
+                          }
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              isLoading = false;
+                            });
+                          }
                         }
                       },
-                      child: Text('Confirm', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 7, fontWeight: FontWeight.bold, color: Colors.white),),
-
+                      child: isLoading
+                          ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Calculating Route...',
+                            style: TextStyle(
+                              fontSize: SizeConfig.safeBlockHorizontal * 4.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+                        ],
+                      )
+                          : Text(
+                        'Confirm Selection',
+                        style: TextStyle(
+                          fontSize: SizeConfig.safeBlockHorizontal * 5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ]
+              ),
+            ],
           ),
         );
       },
@@ -433,8 +1041,29 @@ class _ConfirmVehicletypeState extends ConsumerState<ConfirmVehicletype> {
         print(stack.toString());
         return ErrorCatch(error: e.toString());
       },
-      loading: () => const Loading(),
-
+      loading: () => Scaffold(
+        backgroundColor: lightBackground,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                color: brightBlue,
+                strokeWidth: 4,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Loading vehicle types...',
+                style: TextStyle(
+                  fontSize: SizeConfig.safeBlockHorizontal * 4,
+                  color: Colors.grey[600],
+                  fontFamily: 'Montserrat',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

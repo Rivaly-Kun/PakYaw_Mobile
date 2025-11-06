@@ -61,92 +61,129 @@ class _PhoneChangeState extends ConsumerState<PhoneChange> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    final database = ref.watch(databaseServiceProvider);
-    final user = ref.watch(authStateProvider).value;
-    final auth = ref.watch(authServiceProvider);
-    return Form(
-      key: _formkey,
-      child: Column(
-        children: <Widget>[
-          const Text('Update your phone number', style: TextStyle(fontSize: 23.0, fontWeight: FontWeight.bold),),
-          const SizedBox(height: 15.0,),
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10.0),
-              color: Colors.grey[350],
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Form(
+        key: _formkey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 3.0, horizontal: 12.0),
-            child: Row(
-              children: [
-                const SizedBox(width: 3.0,),
-                Text(
-                  '+63',
+            const SizedBox(height: 24),
+            const Text(
+              'Update Phone Number',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.grey[50],
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: Colors.grey[300]!),
+                      ),
+                    ),
+                    child: const Text(
+                      '+63',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextFormField(
+                      decoration: const InputDecoration(
+                        hintText: 'Phone Number',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      onChanged: (val) => setState(() => phoneNum = val),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (error.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                error,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (_formkey.currentState!.validate()) {
+                    if (phoneNum!.length != 10) {
+                      setState(() => error = 'Mobile number must be 10 digits.');
+                      return;
+                    }
+                    
+                    final mobileNo = '+63$phoneNum';
+                    final user = ref.read(authStateProvider).value;
+                    
+                    if (widget.providerType != null) {
+                      await reAuthPhoneNum(mobileNo, widget.context1);
+                      await ref.read(databaseServiceProvider).updatePassengerPhoneNum(
+                            user!.uid,
+                            mobileNo,
+                          );
+                    } else {
+                      await ref.read(databaseServiceProvider).updatePassengerPhoneNum(
+                            user!.uid,
+                            mobileNo,
+                          );
+                    }
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Save Changes',
                   style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 4,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(width: 3.0,),
-                Expanded(
-                  child: TextFormField(
-                    keyboardType: TextInputType.phone,
-                    style: TextStyle(
-                      fontSize: SizeConfig.safeBlockHorizontal * 4,
-                    ),
-                    decoration: InputDecoration(
-                        hintText: 'Mobile Number',
-                        hintStyle: TextStyle(
-                          fontSize: SizeConfig.safeBlockHorizontal * 4,
-                        ),
-                        fillColor: Colors.grey[350],
-                        filled: true,
-                        enabledBorder: const OutlineInputBorder(
-                            borderSide: BorderSide.none
-                        )
-                    ),
-                    onChanged: (val) => {
-                        setState(() => phoneNum = val)
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-          Container(
-            margin: const EdgeInsets.fromLTRB(20.0, 0.0, 0.0, 0.0),
-            child: Text(error,
-              style: const TextStyle(
-                color: Colors.red,
-                fontSize: 14.0,
-              ),),
-          ),
-          const SizedBox(height: 20.0,),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
-            onPressed: () async {
-              if(_formkey.currentState!.validate()){
-                if(phoneNum!.length != 10){
-                  setState(() => error = 'Mobile number must be 10 digits.');
-                }else{
-                  String mobileNo = '+63$phoneNum';
-                  if(widget.providerType != null){
-                    await reAuthPhoneNum(mobileNo, widget.context1);
-                    await database.updatePassengerPhoneNum(user!.uid, mobileNo);
-                    Navigator.pop(context);
-                  }else{
-                    await database.updatePassengerPhoneNum(user!.uid, mobileNo);
-                    Navigator.pop(context);
-                  }
-                }
-              }
-            },
-            child: const Text('Update', style: TextStyle(color: Colors.white, fontSize: 18.0),),
-
-          ),
-        ],
+          ],
+        ),
       ),
-
     );
   }
 }

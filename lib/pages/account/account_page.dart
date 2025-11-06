@@ -102,258 +102,291 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final userDetails = ref.watch(usersProvider);
     return userDetails.when(
       data: (user) {
-        if(user != null ){
+        if (user != null) {
           return Scaffold(
+            backgroundColor: Colors.grey[100],
             appBar: AppBar(
+              elevation: 0,
+              backgroundColor: Colors.white,
               automaticallyImplyLeading: false,
-              title: Container(
-                margin: EdgeInsets.only(left: SizeConfig.blockSizeHorizontal * 0.1),
-                child: Text(
-                  'Account Info',
-                  style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                      fontSize: SizeConfig.safeBlockHorizontal * 7
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.blue[900]!, Colors.blue],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.person, color: Colors.white, size: 20),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Account Info',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
               ),
               actions: [
                 TextButton.icon(
                   onPressed: () async {
                     await _authService.signOut();
                   },
-                  icon: const Icon(
-                    Icons.person,
-                    color: Colors.black,
-                  ),
-                  label: const Text(
-                    'Log out',
-                    style: TextStyle(
-                      color: Colors.black,
-                    ),
+                  icon: const Icon(Icons.logout, color: Colors.red),
+                  label: Text(
+                    'Logout',
+                    style: TextStyle(color: Colors.red[700]),
                   ),
                 ),
               ],
             ),
-            body: Container(
-              margin: const EdgeInsets.only(top: 20.0),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Center(
-                      child: GestureDetector(
-                        onTap: (){
-                          showProfileChange();
-                        },
-                        child: Container(
-                          width: 120.0,
-                          height: 120.0,
-                          decoration: BoxDecoration(
-                            image: DecorationImage(
-                              fit: BoxFit.cover,
-                              image: user.profilePicPath == '' ? const AssetImage("assets/profile_pic.png") : NetworkImage(user.profilePicPath),
-                            ),
-                            color: Colors.grey[350],
-                            shape: BoxShape.circle,
+            body: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Profile Section
+                  Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () => showProfileChange(),
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.blue, width: 3),
+                                  image: DecorationImage(
+                                    fit: BoxFit.cover,
+                                    image: user.profilePicPath == '' 
+                                      ? const AssetImage("assets/profile_pic.png")
+                                      : NetworkImage(user.profilePicPath) as ImageProvider,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        Text(
+                          user.name,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              value ? Icons.verified : Icons.unpublished,
+                              color: value ? Colors.green : Colors.orange,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              value ? 'Verified Account' : 'Unverified Account',
+                              style: TextStyle(
+                                color: value ? Colors.green : Colors.orange,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    value ? Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.verified, color: Colors.black,),
-                          Text(
-                            'Verified',
-                            style: TextStyle(
-                              fontSize: SizeConfig.safeBlockHorizontal * 5.0,
-                              fontWeight: FontWeight.w500,
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Basic Info Section
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionHeader('Basic Information'),
+                        const SizedBox(height: 16),
+                        _buildInfoTile(
+                          icon: Icons.person_outline,
+                          title: 'Name',
+                          subtitle: user.name,
+                          onTap: () => showNameChangePanel(user.name),
+                        ),
+                        _buildInfoTile(
+                          icon: Icons.credit_card,
+                          title: 'ID',
+                          subtitle: 'View ID Details',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => IdPage(
+                                id: user.uid,
+                                birthday: user.birthday,
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ) : Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.unpublished, color: Colors.black,),
-                          Text(
-                            'UnVerified',
-                            style: TextStyle(
-                              fontSize: SizeConfig.safeBlockHorizontal * 5.0,
-                              fontWeight: FontWeight.w500,
+                        ),
+                        _buildInfoTile(
+                          icon: Icons.phone,
+                          title: 'Phone',
+                          subtitle: user.phoneNumber.isEmpty ? 'Not set' : user.phoneNumber,
+                          onTap: () => showPhoneNumberChangePanel(
+                            user.phoneNumber,
+                            providerType,
+                            context,
+                          ),
+                        ),
+                        _buildInfoTile(
+                          icon: Icons.email,
+                          title: 'Email',
+                          subtitle: user.email.isEmpty ? 'Not set' : user.email,
+                          onTap: providerType != 'Google'
+                              ? () => showEmailChangePanel(user.email)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Additional Settings Section
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionHeader('Settings'),
+                        const SizedBox(height: 16),
+                        _buildSettingsTile(
+                          icon: Icons.payment,
+                          title: 'Payment Methods',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const PasswordChange(),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        _buildSettingsTile(
+                          icon: Icons.location_on,
+                          title: 'Saved Places',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SavedPlaces(),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 20.0,),
-                    const Text(
-                      '  Basic Info',
-                      style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 25.0
-                      ),
-                    ),
-                    const SizedBox(height: 10.0,),
-                    ListTile(
-                      shape: const Border(
-                          bottom: BorderSide(
-                              color: Colors.grey,
-                              width: 1.0
-                          )
-                      ),
-                      onTap: () {
-                        showNameChangePanel(user.name);
-                      },
-                      title: const Text(
-                        'Name',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18.0
-                        ),
-                      ),
-                      subtitle: Text(
-                        user.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.normal,
-                          fontSize: 18.0,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.credit_card_sharp, size: SizeConfig.safeBlockHorizontal * 5, color: Colors.black,),
-                      shape: const Border(
-                          bottom: BorderSide(
-                              color: Colors.grey,
-                              width: 1.0
-                          )
-                      ),
-                      onTap: (){
-                        Navigator.push(context, MaterialPageRoute(settings: const RouteSettings(name: '/IDPage'), builder: (context) => IdPage(id: user.uid, birthday: user.birthday)));
-                      },
-                      title: const Text(
-                        'ID',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18.0
-                        ),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.phone, size: SizeConfig.safeBlockHorizontal * 5, color: Colors.black,),
-                      shape: const Border(
-                          bottom: BorderSide(
-                              color: Colors.grey,
-                              width: 1.0
-                          )
-                      ),
-                      onTap: (){
-                        showPhoneNumberChangePanel(user.phoneNumber, providerType, context);
-                      },
-                      title: const Text(
-                        'Phone number',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18.0
-                        ),
-                      ),
-                      subtitle: Text(
-                        user.phoneNumber == '' ? 'N/A' : user.phoneNumber,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.normal,
-                          fontSize: 18.0,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.email, size: SizeConfig.safeBlockHorizontal * 5, color: Colors.black,),
-                      shape: const Border(
-                          bottom: BorderSide(
-                              color: Colors.grey,
-                              width: 1.0
-                          )
-                      ),
-                      onTap: providerType != 'Google' ? (){
-                        showEmailChangePanel(user.email);
-                      } : null,
-                      title: const Text(
-                        'Email',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18.0
-                        ),
-                      ),
-                      subtitle: Text(
-                        user.email == '' ? 'N/A' : user.email,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.normal,
-                          fontSize: 18.0,
-                        ),
-                      ),
-                      trailing: providerType != 'Google' ? const Icon(Icons.arrow_forward_ios) : null,
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.wallet, size: SizeConfig.safeBlockHorizontal * 5, color: Colors.black,),
-                      contentPadding: EdgeInsets.fromLTRB(SizeConfig.blockSizeHorizontal * 4.4, SizeConfig.blockSizeVertical, SizeConfig.blockSizeHorizontal * 7.3, SizeConfig.safeBlockVertical),
-                      shape: const Border(
-                          bottom: BorderSide(
-                              color: Colors.grey,
-                              width: 1.0
-                          )
-                      ),
-                      onTap: (){
-                        Navigator.push(context, MaterialPageRoute(settings: const RouteSettings(name: '/PaymentMethods'), builder: (context) => const PasswordChange()));
-                      },
-                      title: const Text(
-                        'Payment Methods',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18.0
-                        ),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.place, size: SizeConfig.safeBlockHorizontal * 5, color: Colors.black,),
-                      contentPadding: EdgeInsets.fromLTRB(SizeConfig.blockSizeHorizontal * 4.4, SizeConfig.blockSizeVertical, SizeConfig.blockSizeHorizontal * 7.3, SizeConfig.safeBlockVertical),
-                      shape: const Border(
-                          bottom: BorderSide(
-                              color: Colors.grey,
-                              width: 1.0
-                          )
-                      ),
-                      onTap: (){
-                        Navigator.push(context, MaterialPageRoute(settings: const RouteSettings(name: '/SavedPlaces'), builder: (context) => const SavedPlaces()));
-                      },
-                      title: const Text(
-                        'Saved Places',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18.0
-                        ),
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
-        }else{
-          return const ErrorCatch(error: 'No data found');
         }
-
+        return const ErrorCatch(error: 'No data found');
       },
       error: (error, stack) => Text('Error: $error'),
       loading: () => const Loading(),
 
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Colors.black87,
+      ),
+    );
+  }
+
+  Widget _buildInfoTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback? onTap,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Colors.blue[700]),
+      ),
+      title: Text(title),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          color: Colors.grey[700],
+          fontSize: 14,
+        ),
+      ),
+      trailing: onTap != null
+          ? const Icon(Icons.arrow_forward_ios, size: 16)
+          : null,
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Colors.blue[700]),
+      ),
+      title: Text(title),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: onTap,
     );
   }
 }

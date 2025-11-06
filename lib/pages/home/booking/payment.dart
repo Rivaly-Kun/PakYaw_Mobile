@@ -57,84 +57,109 @@ class _PaymentWayState extends ConsumerState<PaymentWay> {
     getLinkedAccount(id!);
   }
 
+  Widget _buildPaymentOption({
+    required String title,
+    required IconData icon,
+    String? subtitle,
+    VoidCallback? onTap,
+    Widget? leading
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ListTile(
+          onTap: onTap,
+          leading: leading ?? Icon(icon, size: 28),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+          subtitle: subtitle != null ? Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 14,
+            ),
+          ) : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: SizeConfig.blockSizeHorizontal * 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: SizeConfig.blockSizeVertical * 1.5,),
-          Text(
-            'Payment Method',
-            style: TextStyle(
-                fontSize: SizeConfig.safeBlockHorizontal * 6,
-                color: Colors.black,
-                fontWeight: FontWeight.w500
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          SizedBox(height: SizeConfig.blockSizeVertical * 2,),
-          ListTile(
-            leading: Icon(Icons.money, size: SizeConfig.safeBlockHorizontal * 10,),
-            shape: const Border(
-                bottom: BorderSide(
-                    color: Colors.grey,
-                    width: 1.0
-                )
+          const Text(
+            'Payment Method',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
-            onTap: (){
+          ),
+          const SizedBox(height: 16),
+          _buildPaymentOption(
+            title: 'Cash',
+            icon: Icons.money,
+            onTap: () {
               widget.paymentMethod('Cash', '');
               Navigator.pop(context);
             },
-            title: Text(
-              'Cash',
-              style: TextStyle(
-                  fontSize: SizeConfig.safeBlockHorizontal * 5,
-                  color: Colors.black,
-                  fontWeight: FontWeight.w500
-              ),
-            ),
           ),
-          eWallet.isNotEmpty ? ListTile(
-            leading: Container(
-              width: 40.0,
-              height: 40.0,
-              decoration: BoxDecoration(
-                image: const DecorationImage(
-                  image: AssetImage("assets/Google.png"),
-                  fit: BoxFit.cover,
-                ),
-                color: Colors.grey[350],
-                shape: BoxShape.circle,
-              ),
+          if (eWallet.isNotEmpty) _buildPaymentOption(
+            title: 'E-wallet',
+            icon: Icons.account_balance_wallet,
+            subtitle: eWallet['account_number'],
+            leading: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.transparent,
+              backgroundImage: const AssetImage("assets/Google.png"),
             ),
-            onTap: (){
+            onTap: () {
               widget.paymentMethod('E-wallet', eWallet['account_number']);
               Navigator.pop(context);
             },
-            shape: const Border(
-                bottom: BorderSide(
-                    color: Colors.grey,
-                    width: 1.0
-                )
-            ),
-            title: const Text(
-              'E-wallet',
-              style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 20.0
-              ),
-            ),
-            subtitle: Text(
-              eWallet['account_number'],
-              style: TextStyle(
-                  fontSize: SizeConfig.safeBlockHorizontal * 4,
-                  color: Colors.grey[700],
-                  fontWeight: FontWeight.w500
-              ),
-            ),
-          ) : Container(),
+          ),
         ],
       ),
     );

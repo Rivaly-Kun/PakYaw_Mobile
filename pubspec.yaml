@@ -63,6 +63,7 @@ dependencies:
   flutter_phone_direct_caller: ^2.1.1
   another_telephony: ^0.3.0
   file_picker: ^8.1.4
+  flutter_svg: ^2.1.0
 
 dev_dependencies:
   flutter_test:

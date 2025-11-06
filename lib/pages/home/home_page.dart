@@ -1,7 +1,11 @@
+// lib/pages/home/home_page.dart
+
 import 'package:another_telephony/telephony.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server/gmail.dart';
@@ -17,9 +21,25 @@ import 'package:pakyaw/shared/loading.dart';
 import 'package:pakyaw/shared/size_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-
 import '../../models/promo_model.dart';
 import '../../services/DirectCall.dart';
+
+// Model for popular destination
+class PopularDestination {
+  final String name;
+  final double lat;
+  final double lng;
+  final String subtitle;
+  final IconData icon;
+
+  PopularDestination({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    required this.subtitle,
+    required this.icon,
+  });
+}
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -32,6 +52,46 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware, WidgetsBin
   String id = '';
   String vehicleTypeSelected = 'Vehicle';
   final Telephony telephony = Telephony.instance;
+
+  // PAKYAW Brand Colors
+  static const Color primaryNavy = Color(0xFF0B2E6B);
+  static const Color brightBlue = Color(0xFF1C72DD);
+  static const Color lightBlue = Color(0xFF1B99FF);
+  static const Color darkGray = Color(0xFF303841);
+  static const Color lightBackground = Color(0xFFF3F3F3);
+  static const Color successGreen = Color(0xFF10B981);
+
+  // Popular destinations data
+  final List<PopularDestination> popularDestinations = [
+    PopularDestination(
+      name: 'Robinson Mall',
+      lat: 11.025301161022764,
+      lng: 124.60485188565477,
+      subtitle: 'Shopping Mall',
+      icon: Icons.store_mall_directory,
+    ),
+    PopularDestination(
+      name: 'Ormoc City District Hospital',
+      lat: 11.022779455801421,
+      lng: 124.60316911445099,
+      subtitle: 'Hospital',
+      icon: Icons.local_hospital,
+    ),
+    PopularDestination(
+      name: 'Ormoc City Superdome',
+      lat: 11.004263098845255,
+      lng: 124.60955226050235,
+      subtitle: 'Sports Complex',
+      icon: Icons.school,
+    ),
+    PopularDestination(
+      name: 'New City Hall',
+      lat: 11.013180121398674,
+      lng: 124.60519370081639,
+      subtitle: 'Government Building',
+      icon: Icons.business,
+    ),
+  ];
 
   void changeSelectedVehicle(value){
     setState(() => vehicleTypeSelected = value);
@@ -52,13 +112,13 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware, WidgetsBin
   void _showToast() {
     final scaffold = ScaffoldMessenger.of(context);
     scaffold.showSnackBar(
-       const SnackBar(
+      const SnackBar(
         content: Text('Select a vehicle type'),
       ),
     );
   }
 
-Future<void> sendEmail() async {
+  Future<void> sendEmail() async {
     final smtpServer = gmail(email, password);
 
     final message = Message()
@@ -193,7 +253,7 @@ Future<void> sendEmail() async {
         print('Problem: ${p.code}: ${p.msg}');
       }
     }
-}
+  }
   listener(SendStatus status){
     if(status == SendStatus.SENT){
       ScaffoldMessenger.of(context).showSnackBar(
@@ -205,19 +265,19 @@ Future<void> sendEmail() async {
       );
     }
   }
-Future<void> sendText() async {
+  Future<void> sendText() async {
     telephony.sendSms(
-      to: '+639661637528',
-      message: 'Brad test receipt',
-      statusListener: listener
+        to: '+639661637528',
+        message: 'Brad test receipt',
+        statusListener: listener
     );
-}
+  }
 
-Future<void> callNumber() async {
+  Future<void> callNumber() async {
     await telephony.dialPhoneNumber("+639661637528");
-}
+  }
 
-Future<void> initTelephony() async {
+  Future<void> initTelephony() async {
     final bool? result = await telephony.requestPhoneAndSmsPermissions;
     if(result != null && result){
     }else{
@@ -225,22 +285,106 @@ Future<void> initTelephony() async {
           const SnackBar(content: Text("There would limited functionality."))
       );
     }
-}
+  }
 
-Future<void> resetCancellations() async {
+  Future<void> resetCancellations() async {
     print('running man');
-  DatabaseService database = DatabaseService();
-  await database.resetCancellations(id);
-}
+    DatabaseService database = DatabaseService();
+    await database.resetCancellations(id);
+  }
 
-Future<void> updateSubmittedIDS(String userId) async {
+  Future<void> updateSubmittedIDS(String userId) async {
     DatabaseService database = DatabaseService();
     database.updateSubmittedID(userId);
-}
+  }
 
-@override
+  // Navigate to map with pre-filled destination
+  void _navigateToMapWithDestination(PopularDestination destination) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DropOffSelect(
+          prefilledDestination: destination.name,
+          prefilledLatLng: LatLng(destination.lat, destination.lng),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentDestination({
+    required IconData icon,
+    required String location,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: lightBackground,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: brightBlue,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        location,
+                        style: TextStyle(
+                          fontSize: SizeConfig.safeBlockHorizontal * 3.8,
+                          fontWeight: FontWeight.w600,
+                          color: darkGray,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: SizeConfig.safeBlockHorizontal * 3,
+                          color: Colors.grey[600],
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.grey[400],
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     initTelephony();
     final user = ref.read(authStateProvider).value;
@@ -249,18 +393,15 @@ Future<void> updateSubmittedIDS(String userId) async {
       resetCancellations();
     });
     updateSubmittedIDS(id);
-
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // TODO: implement didChangeAppLifecycleState
     super.didChangeAppLifecycleState(state);
   }
 
   @override
   void didChangeDependencies() {
-    // TODO: implement didChangeDependencies
     super.didChangeDependencies();
     var route = ModalRoute.of(context);
     print('Route in didChangeDependencies: ${route?.settings.name}');
@@ -272,7 +413,6 @@ Future<void> updateSubmittedIDS(String userId) async {
 
   @override
   void didPush() {
-    // Called when the page is pushed onto the navigator
     print("Page 1: didPush");
     resetCancellations();
   }
@@ -292,198 +432,162 @@ Future<void> updateSubmittedIDS(String userId) async {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final promos = ref.watch(allPromoProvider);
+
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: <Widget>[
-            Container(
-              alignment: Alignment.centerLeft,
-              margin: const EdgeInsets.fromLTRB(25.0, 50.0, 0.0, 10.0),
-              child: Text(
-                'Pakyaw',
-                style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 11,
-                    fontWeight: FontWeight.bold
-                ),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(40.0),
-                color: Colors.grey[350],
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 3.0, horizontal: 10.0),
-              margin: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 0.0),
-              child: Container(
-                height: 60.0,
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Row(
-                  children: <Widget>[
-                    const SizedBox(width: 3.0,),
-                    Icon(
-                      Icons.search,
-                      size: SizeConfig.safeBlockHorizontal * 11,
-                      weight: 50.0,
-                    ),
-                    const SizedBox(width: 3.0,),
-                    SizedBox(
-                      width: SizeConfig.blockSizeHorizontal * 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 8.0),
-                          backgroundColor: Colors.grey[350],
-                          elevation: 0,
-                        ),
-                        onPressed: () => {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => DropOffSelect()))
-                        },
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Where to?',
-                            style: TextStyle(
-                                color: Colors.grey[700],
-                                fontSize: 25.0,
-                                fontWeight: FontWeight.bold
-                            ),
-                          ),
-                        ),
-
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              width: SizeConfig.screenWidth,
-              height: SizeConfig.blockSizeVertical * 35,
-              margin: const EdgeInsets.fromLTRB(5.0, 20.0, 0.0, 10.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(left: 10),
-                    child: Text(
-                      'Promos',
-                      style: TextStyle(
-                        fontSize: SizeConfig.safeBlockHorizontal * 7,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w500
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: promos.when(
-                      data: (data){
-                        return ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: data.length,
-                          itemBuilder: (context, index){
-                            return PromoTileHomePage(promoModel: data[index],);
-                          },
-                        );
-                      },
-                      error: (e, stack) {
-                        print(e.toString());
-                        print(stack.toString());
-                        return ErrorCatch(error: e.toString(),);
-                      },
-                      loading: () => const Loading(),
-                    ),
-                  ),
-
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class PromoTileHomePage extends StatelessWidget {
-  final PromoModel promoModel;
-  const PromoTileHomePage({super.key, required this.promoModel});
-
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    DateTime startingDate = promoModel.startDate.toDate();
-    DateTime endingDate = promoModel.endDate.toDate();
-    String formattedStartDate = DateFormat('MM/dd/yyyy').format(startingDate);
-    String formattedEndDate = DateFormat('MM/dd/yyyy').format(endingDate);
-    return Container(
-      margin: EdgeInsets.only(bottom: SizeConfig.blockSizeVertical * 3, left: SizeConfig.blockSizeHorizontal * 2,
-          right: SizeConfig.blockSizeHorizontal * 2),
-      height: SizeConfig.blockSizeVertical * 30,
-      width: SizeConfig.blockSizeHorizontal * 90,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black, width: 2),
-        borderRadius: const BorderRadius.all(Radius.circular(10.0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: SizeConfig.blockSizeVertical * 12,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.only(topLeft: Radius.circular(10.0), topRight: Radius.circular(10.0)),
-              image: DecorationImage(
-                image: NetworkImage(promoModel.banner),
-                fit: BoxFit.cover,
-              )
-            ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              lightBackground,
+              Colors.white,
+              lightBackground.withOpacity(0.3),
+            ],
           ),
-          SizedBox(height: SizeConfig.blockSizeVertical * 2,),
-          Padding(
-            padding: EdgeInsets.only(left: SizeConfig.blockSizeHorizontal * 5,),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${promoModel.promoName}:   ${(promoModel.discount * 100).toStringAsFixed(0)}% OFF',
-                  style: TextStyle(
-                      fontSize: SizeConfig.safeBlockHorizontal * 5,
-                      color: Colors.black,
-                      fontWeight: FontWeight.w500
+              children: <Widget>[
+                // Header Section
+                Container(
+                  alignment: Alignment.centerLeft,
+                  margin: const EdgeInsets.fromLTRB(25.0, 30.0, 25.0, 10.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              height: 60,
+                              child: SvgPicture.asset(
+                                'assets/pakyaw_logo.svg',
+                                alignment: Alignment.centerLeft,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [primaryNavy, brightBlue],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: brightBlue.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.account_circle,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Row(
-                  children: [
-                    Text(
-                      'Start: $formattedStartDate',
-                      style: TextStyle(
-                        fontSize: SizeConfig.safeBlockHorizontal * 3,
-                        color: Colors.black,
+
+                // Search Bar
+                Container(
+                  margin: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16.0),
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
                       ),
-                    ),
-                    Text(
-                      ', End: $formattedEndDate',
-                      style: TextStyle(
-                        fontSize: SizeConfig.safeBlockHorizontal * 3,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  promoModel.description,
-                  style: TextStyle(
-                      fontSize: SizeConfig.safeBlockHorizontal * 4,
-                      color: Colors.black,
-                      overflow: TextOverflow.fade
+                    ],
                   ),
-                  maxLines: 2,
-                )
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16.0),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const DropOffSelect()),
+                      ),
+                      child: Container(
+                        height: 56.0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          children: <Widget>[
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: brightBlue.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.search,
+                                color: brightBlue,
+                                size: SizeConfig.safeBlockHorizontal * 6,
+                              ),
+                            ),
+                            const SizedBox(width: 12.0),
+                            Expanded(
+                              child: Text(
+                                'Where to?',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: SizeConfig.safeBlockHorizontal * 4.5,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'Montserrat',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 25),
+
+                // Recent/Popular Destinations
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Popular Destinations',
+                        style: TextStyle(
+                          fontSize: SizeConfig.safeBlockHorizontal * 5.5,
+                          color: darkGray,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ...popularDestinations.map((destination) {
+                        return _buildRecentDestination(
+                          icon: destination.icon,
+                          location: destination.name,
+                          subtitle: destination.subtitle,
+                          onTap: () => _navigateToMapWithDestination(destination),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 40),
               ],
             ),
           ),
-
-        ],
+        ),
       ),
     );
   }

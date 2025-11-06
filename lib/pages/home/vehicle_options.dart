@@ -22,63 +22,97 @@ class _VehicleOptionsState extends ConsumerState<VehicleOptions> {
   @override
   Widget build(BuildContext context) {
     final vehicleTypes = ref.watch(vehicleTypesProvider);
+    
     return vehicleTypes.when(
-      data: (data){
+      data: (data) {
         return Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text(
+            Container(
+              padding: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: const Text(
                 'Select a vehicle type',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 22, 
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 30.0,),
+            const SizedBox(height: 20.0),
             Expanded(
               child: GridView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 10.0,
-                  mainAxisSpacing: 10.0,
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16.0,
+                  mainAxisSpacing: 16.0,
+                  childAspectRatio: 1.1,
                 ),
                 itemCount: data.length,
                 itemBuilder: (context, index) {
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        selectedIndex = index;
-                        widget.vehicletype(data[index].type);
-                        if(mounted) Navigator.pop(context);
-                      });
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: selectedIndex == index ? Colors.grey[350] : Colors.white,
-                        border: Border.all(
-                          color: selectedIndex == index ? Colors.black : Colors.black,
-                          width: 3.0,
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          selectedIndex = index;
+                          widget.vehicletype(data[index].type);
+                          Navigator.pop(context);
+                        });
+                      },
+                      child: Card(
+                        elevation: selectedIndex == index ? 8 : 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15.0),
+                          side: BorderSide(
+                            color: selectedIndex == index 
+                                ? Colors.black 
+                                : Colors.grey.withOpacity(0.2),
+                            width: selectedIndex == index ? 2.0 : 1.0,
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(10.0),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Image(
-                            image: NetworkImage(data[index].image),
-                            height: 50.0,
-                            width: 50.0,
-                            fit: BoxFit.contain,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: selectedIndex == index 
+                                ? Colors.grey[100] 
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(15.0),
                           ),
-                          const SizedBox(height: 10.0,),
-                          Text(
-                            data[index].type,
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 15.0,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              Image(
+                                image: NetworkImage(data[index].image),
+                                height: 60.0,
+                                width: 60.0,
+                                fit: BoxFit.contain,
+                              ),
+                              const SizedBox(height: 12.0),
+                              Text(
+                                data[index].type,
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 16.0,
+                                  fontWeight: selectedIndex == index 
+                                      ? FontWeight.bold 
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   );

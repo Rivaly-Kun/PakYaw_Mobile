@@ -25,7 +25,17 @@ import 'package:pakyaw/shared/size_config.dart';
 import '../../../providers/trip_provider.dart';
 import '../../../shared/global_var.dart';
 
-class TripDetails extends ConsumerStatefulWidget{
+// Enhanced PAKYAW Color Palette
+const Color primaryNavy = Color(0xFF0B2E6B);
+const Color brightBlue = Color(0xFF1C72DD);
+const Color lightBlue = Color(0xFF1B99FF);
+const Color darkGray = Color(0xFF303841);
+const Color lightBackground = Color(0xFFF3F3F3);
+const Color successGreen = Color(0xFF10B981);
+const Color warningOrange = Color(0xFFF59E0B);
+const Color errorRed = Color(0xFFDC2626);
+
+class TripDetails extends ConsumerStatefulWidget {
   final String tripId;
   const TripDetails({super.key, required this.tripId});
 
@@ -33,7 +43,8 @@ class TripDetails extends ConsumerStatefulWidget{
   ConsumerState<TripDetails> createState() => _TripDetailsState();
 }
 
-class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingObserver{
+class _TripDetailsState extends ConsumerState<TripDetails>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final Telephony telephony = Telephony.instance;
   bool flag1 = false;
   bool flag2 = false;
@@ -49,20 +60,85 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
   bool isVatVerified = false;
   GeoPoint? geo;
   LatLng? driverPos;
-  double _currentHeight = SizeConfig.blockSizeVertical * 25; // Initial height
-  final double _minHeight = SizeConfig.blockSizeVertical * 25;
-  final double _maxHeight = SizeConfig.blockSizeVertical * 76;
+  double _currentHeight = 0.0;
+  double _minHeight = 0.0;
+  double _maxHeight = 0.0;
   double rating = 1;
   int changes = 1;
   final smsService = SMSService();
-  List<String> reasons = ['', 'Driver too far.', 'Driver No Show', 'I want to change my booking details.',
-  "I don't need a ride anymore.", "Driver not suitable.", "Other"];
+
+  // Animation controllers
+  late AnimationController _slideController;
+  late AnimationController _fadeController;
+  late AnimationController _pulseController;
+
+  List<String> reasons = [
+    '',
+    'Driver too far.',
+    'Driver No Show',
+    'I want to change my booking details.',
+    "I don't need a ride anymore.",
+    "Driver not suitable.",
+    "Other"
+  ];
 
   Map<PolylineId, Polyline> polyLines = {};
-
   Completer<GoogleMapController> controller = Completer<GoogleMapController>();
 
-  void setVatValue(bool value){
+  @override
+  void initState() {
+    super.initState();
+
+    // Initialize animations
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+
+    // Start animations
+    _slideController.forward();
+    _fadeController.forward();
+    _pulseController.repeat(reverse: true);
+
+    customMarker();
+    getCancelCharge();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Initialize responsive dimensions after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final screenHeight = MediaQuery.of(context).size.height;
+      setState(() {
+        _minHeight = screenHeight * 0.25;
+        _maxHeight = screenHeight * 0.76;
+        _currentHeight = _minHeight;
+      });
+    });
+
+    final trip = ref.read(tripProvider);
+    getPolylineFromPoints(trip.route!);
+    print(widget.tripId);
+    trip.findAndNotifyDriver(widget.tripId, trip.pickupLoc!, trip.vehicleType!);
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    _fadeController.dispose();
+    _pulseController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    timer?.cancel();
+    super.dispose();
+  }
+
+  void setVatValue(bool value) {
     setState(() {
       isVatVerified = value;
     });
@@ -100,10 +176,10 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
   void getPolylineFromPoints(List<LatLng> coordinates) async {
     PolylineId polylineId = const PolylineId("poly");
     Polyline polyline = Polyline(
-        polylineId: polylineId,
-        color: Colors.black,
-        points: coordinates,
-        width: 4
+      polylineId: polylineId,
+      color: primaryNavy,
+      points: coordinates,
+      width: 4,
     );
     setState(() {
       polyLines[polylineId] = polyline;
@@ -112,13 +188,14 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
     print('This is first coordinated $coordinates');
     fitPolylineToMap(coordinates);
   }
+
   void getPolylineFromPoints2(List<LatLng> coordinates) async {
     PolylineId polylineId = const PolylineId("ChangedRoute");
     Polyline polyline = Polyline(
-        polylineId: polylineId,
-        color: Colors.black,
-        points: coordinates,
-        width: 4
+      polylineId: polylineId,
+      color: brightBlue,
+      points: coordinates,
+      width: 4,
     );
     setState(() {
       polyLines.clear();
@@ -131,94 +208,141 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
 
   Widget buildRating() => RatingBar.builder(
     minRating: 1,
-    itemSize: 35,
-    itemPadding: const EdgeInsets.symmetric(horizontal: 5.0),
-    itemBuilder: (context, _) => const Icon(Icons.star, color: Colors.amber,),
+    itemSize: 40,
+    itemPadding: const EdgeInsets.symmetric(horizontal: 8.0),
+    itemBuilder: (context, _) => const Icon(
+      Icons.star,
+      color: warningOrange,
+    ),
     onRatingUpdate: (rating) {
       this.rating = rating;
       print(rating);
     },
-
   );
-  
+
   void showRating(context2, String tripId, String driverId, double charge, String passengerId) {
     DatabaseService database = DatabaseService();
     print('Does this print?');
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: Column(
-        children: [
-          Image(
-            image: const AssetImage('assets/rate.png'),
-            height: SizeConfig.blockSizeVertical * 10,
-            width: SizeConfig.blockSizeHorizontal * 30,
-          ),
-          const Text('Rate the Trip'),
-        ],
-      ),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Please leave a star rating.', style: TextStyle(fontSize: 20.0),),
-          const SizedBox(height: 32,),
-          buildRating()
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () async {
-            bool result = await database.rateRide(tripId, rating, driverId, charge, passengerId);
-            if(result){
-              Navigator.pop(context);
-              Navigator.popUntil(context2, ModalRoute.withName('/Home'));
-            }else{
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Error occurred, please try again"))
-              );
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('OK', style: TextStyle(fontSize: 20.0),),
-
-        )
-      ],
-    ));
-  }
-
-  CameraPosition currentPosition = const CameraPosition(
-    target: LatLng(11.00639, 124.6075),
-    zoom: 19,
-  );
-
-  Future<void> showBeforeCancel(BuildContext context1) {
-    SizeConfig().init(context1);
-    return showDialog(
-      context: context1,
-      builder: (context) => AlertDialog(
-        content: SizedBox(
-          height: SizeConfig.blockSizeVertical * 25,
-          child: Column(
-            children: [
-              Image(
-                image: const AssetImage('assets/fee.png'),
-                height: SizeConfig.blockSizeVertical * 10,
-                width: SizeConfig.blockSizeHorizontal * 30,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
-              Center(
-                child: Icon(
-                  Icons.warning_outlined,
-                  color: Colors.yellow,
-                  size: SizeConfig.safeBlockHorizontal * 8,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Rating illustration
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [primaryNavy, brightBlue],
+                  ),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: const Icon(
+                  Icons.star,
+                  color: Colors.white,
+                  size: 50,
                 ),
               ),
+
+              const SizedBox(height: 24),
+
               Text(
-                "You will be charged $cancelCharge pesos on your future trips if you cancel this trip.",
+                'Rate Your Trip',
                 style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    color: Colors.black,
-                    fontWeight: FontWeight.w500
+                  fontSize: (SizeConfig.safeBlockHorizontal * 6).clamp(20.0, 28.0),
+                  fontWeight: FontWeight.w600,
+                  color: darkGray,
+                  fontFamily: 'Montserrat',
                 ),
                 textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 12),
+
+              Text(
+                'How was your experience?',
+                style: TextStyle(
+                  fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 18.0),
+                  color: Colors.grey[600],
+                  fontFamily: 'Montserrat',
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 32),
+
+              buildRating(),
+
+              const SizedBox(height: 32),
+
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    bool result = await database.rateRide(
+                        tripId, rating, driverId, charge, passengerId);
+                    if (result) {
+                      Navigator.pop(context);
+                      Navigator.popUntil(context2, ModalRoute.withName('/Home'));
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text("Error occurred, please try again"),
+                          backgroundColor: errorRed,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      );
+                      Navigator.pop(context);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [primaryNavy, brightBlue],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Submit Rating',
+                      style: TextStyle(
+                        fontSize: (SizeConfig.safeBlockHorizontal * 4.5).clamp(16.0, 20.0),
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        fontFamily: 'Montserrat',
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -227,171 +351,460 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
     );
   }
 
-  void showCancelDialog(context2, String id, String driverId, String passengerId){
+  CameraPosition currentPosition = const CameraPosition(
+    target: LatLng(11.00639, 124.6075),
+    zoom: 19,
+  );
+
+  Future<void> showBeforeCancel(BuildContext context1) {
+    return showDialog(
+      context: context1,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: warningOrange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(40),
+                ),
+                child: Icon(
+                  Icons.warning_outlined,
+                  color: warningOrange,
+                  size: 40,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Text(
+                'Cancellation Fee',
+                style: TextStyle(
+                  fontSize: (SizeConfig.safeBlockHorizontal * 5.5).clamp(18.0, 24.0),
+                  fontWeight: FontWeight.w600,
+                  color: darkGray,
+                  fontFamily: 'Montserrat',
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 12),
+
+              Text(
+                "You will be charged ₱$cancelCharge on your future trips if you cancel this trip.",
+                style: TextStyle(
+                  fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 18.0),
+                  color: Colors.grey[600],
+                  fontFamily: 'Montserrat',
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 24),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [primaryNavy, brightBlue],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'I Understand',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Montserrat',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void showCancelDialog(context2, String id, String driverId, String passengerId) {
     String currentSelected = reasons[0];
     TextEditingController other = TextEditingController();
     bool toggleView = false;
     DatabaseService database = DatabaseService();
     print(currentSelected);
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setState){
-          return Stack(
-            children: [
-              Positioned(
-                bottom: SizeConfig.blockSizeVertical * 34,
-                left: SizeConfig.blockSizeHorizontal * 1.5,
-                right: SizeConfig.blockSizeHorizontal * 1.5,
-                child: SizedBox(
-                  height: SizeConfig.blockSizeVertical * 55,
-                  child: SingleChildScrollView(
-                    child: AlertDialog(
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
+        builder: (BuildContext context, StateSetter setState) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(16),
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [primaryNavy, brightBlue],
+                      ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.cancel,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Cancel Trip',
+                            style: TextStyle(
+                              fontSize: (SizeConfig.safeBlockHorizontal * 5).clamp(18.0, 22.0),
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Content
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(
+                            'Please select a reason for cancellation:',
+                            style: TextStyle(
+                              fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 18.0),
+                              fontWeight: FontWeight.w500,
+                              color: darkGray,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
                           ListView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: reasons.length - 1,
-                            itemBuilder: (context, index){
+                            itemBuilder: (context, index) {
                               final reason = reasons[index + 1];
                               final isDisabled = !enabledNoShow && reason == 'Driver No Show';
-                              if(!enabledNoShow && reason != 'Driver No Show'){
-                                return RadioListTile(
-                                  contentPadding: const EdgeInsets.only(left: 0.0),
-                                  title: Text(
+
+                              if (!enabledNoShow && reason != 'Driver No Show') {
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: currentSelected == reason
+                                          ? brightBlue
+                                          : Colors.grey[300]!,
+                                      width: currentSelected == reason ? 2 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: RadioListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                    title: Text(
                                       reasons[index + 1],
                                       style: TextStyle(
-                                          fontSize: SizeConfig.safeBlockHorizontal * 4,
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w500
-                                      )
+                                        fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(12.0, 16.0),
+                                        color: darkGray,
+                                        fontWeight: FontWeight.w500,
+                                        fontFamily: 'Montserrat',
+                                      ),
+                                    ),
+                                    value: reasons[index + 1],
+                                    groupValue: currentSelected,
+                                    activeColor: brightBlue,
+                                    onChanged: (value) {
+                                      print(currentSelected);
+                                      if (value == 'Other') {
+                                        setState(() {
+                                          toggleView = true;
+                                          currentSelected = value.toString();
+                                        });
+                                      } else {
+                                        setState(() {
+                                          toggleView = false;
+                                          currentSelected = value.toString();
+                                        });
+                                      }
+                                      print(currentSelected);
+                                    },
                                   ),
-                                  value: reasons[index + 1],
-                                  groupValue: currentSelected,
-                                  onChanged: (value){
-                                    print(currentSelected);
-                                    if(value == 'Other'){
-                                      setState((){
-                                        toggleView = true;
-                                        currentSelected = value.toString();
-                                      });
-                                    }else{
-                                      setState(() {
-                                        toggleView = false;
-                                        currentSelected = value.toString();
-                                      });
-                                    }
-                                    print(currentSelected);
-                                  },
                                 );
-                              }else if(enabledNoShow && reason == 'Driver No Show'){
-                                return RadioListTile(
-                                  contentPadding: const EdgeInsets.only(left: 0.0),
-                                  title: Text(
+                              } else if (enabledNoShow && reason == 'Driver No Show') {
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: currentSelected == reason
+                                          ? brightBlue
+                                          : Colors.grey[300]!,
+                                      width: currentSelected == reason ? 2 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: RadioListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                    title: Text(
                                       reasons[index + 1],
                                       style: TextStyle(
-                                          fontSize: SizeConfig.safeBlockHorizontal * 4,
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w500
-                                      )
+                                        fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(12.0, 16.0),
+                                        color: darkGray,
+                                        fontWeight: FontWeight.w500,
+                                        fontFamily: 'Montserrat',
+                                      ),
+                                    ),
+                                    value: reasons[index + 1],
+                                    groupValue: currentSelected,
+                                    activeColor: brightBlue,
+                                    onChanged: (value) {
+                                      print(currentSelected);
+                                      if (value == 'Other') {
+                                        setState(() {
+                                          toggleView = true;
+                                          currentSelected = value.toString();
+                                        });
+                                      } else {
+                                        setState(() {
+                                          toggleView = false;
+                                          currentSelected = value.toString();
+                                        });
+                                      }
+                                      print(currentSelected);
+                                    },
                                   ),
-                                  value: reasons[index + 1],
-                                  groupValue: currentSelected,
-                                  onChanged: (value){
-                                    print(currentSelected);
-                                    if(value == 'Other'){
-                                      setState((){
-                                        toggleView = true;
-                                        currentSelected = value.toString();
-                                      });
-                                    }else{
-                                      setState(() {
-                                        toggleView = false;
-                                        currentSelected = value.toString();
-                                      });
-                                    }
-                                    print(currentSelected);
-                                  },
                                 );
-                              }else{
+                              } else {
                                 return Container();
                               }
-
                             },
                           ),
-                          toggleView ? TextField(
-                            controller: other,
-                            minLines: 1,
-                            maxLines: 2,
-                            style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.w500),
-                            decoration: const InputDecoration(border: OutlineInputBorder()),
-                          ) : Container(),
-                        ]
+
+                          if (toggleView) ...[
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: other,
+                              minLines: 1,
+                              maxLines: 3,
+                              style: TextStyle(
+                                fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(12.0, 16.0),
+                                fontWeight: FontWeight.w500,
+                                fontFamily: 'Montserrat',
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Please specify...',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: Colors.grey[300]!),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: brightBlue, width: 2),
+                                ),
+                                contentPadding: const EdgeInsets.all(12),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                ),
-              ),
-              Positioned(
-                bottom: 20.0,
-                left: 22.0,
-                right: 22.0,
-                height: 60.0,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      disabledBackgroundColor: Colors.grey.shade700
-                  ),
-                  onPressed: currentSelected != '' ? () async {
-                    bool result = false;
-                    if(currentSelected == 'Driver No Show'){
-                      print('No show');
-                      result = await database.driverNoShow(id, currentSelected, driverId, passengerId);
-                    }else if(currentSelected != 'Other' && currentSelected != 'Driver No Show'){
-                      print('Not No show');
-                      result = await database.cancelTrip(id, currentSelected, driverId, passengerId, cancelCharge!);
-                    }else{
-                      print('Other');
-                      result = await database.cancelTrip(id, 'Other: ${other.text}', driverId, passengerId, cancelCharge!);
-                    }
-                    if(result){
-                      Navigator.pop(context);
-                      Navigator.of(context2).pop();
-                    }else{
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Error occurred, please try again"))
-                      );
-                      Navigator.pop(context);
-                    }
-                  } : null,
-                  child: Text('Confirm', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 7, fontWeight: FontWeight.bold, color: Colors.white),),
 
-                ),
+                  // Actions
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                                fontFamily: 'Montserrat',
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: currentSelected != ''
+                                  ? Colors.transparent
+                                  : Colors.grey[300],
+                              shadowColor: Colors.transparent,
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: currentSelected != ''
+                                ? () async {
+                              bool result = false;
+                              if (currentSelected == 'Driver No Show') {
+                                print('No show');
+                                result = await database.driverNoShow(
+                                    id, currentSelected, driverId, passengerId);
+                              } else if (currentSelected != 'Other' &&
+                                  currentSelected != 'Driver No Show') {
+                                print('Not No show');
+                                result = await database.cancelTrip(id,
+                                    currentSelected, driverId, passengerId, cancelCharge!);
+                              } else {
+                                print('Other');
+                                result = await database.cancelTrip(id,
+                                    'Other: ${other.text}', driverId, passengerId, cancelCharge!);
+                              }
+                              if (result) {
+                                Navigator.pop(context);
+                                Navigator.of(context2).pop();
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text("Error occurred, please try again"),
+                                    backgroundColor: errorRed,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                );
+                                Navigator.pop(context);
+                              }
+                            }
+                                : null,
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                gradient: currentSelected != ''
+                                    ? LinearGradient(colors: [primaryNavy, brightBlue])
+                                    : null,
+                                color: currentSelected == '' ? Colors.grey[300] : null,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                'Confirm Cancellation',
+                                style: TextStyle(
+                                  fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 18.0),
+                                  fontWeight: FontWeight.w600,
+                                  color: currentSelected != '' ? Colors.white : Colors.grey[500],
+                                  fontFamily: 'Montserrat',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
-      barrierDismissible: false
     );
   }
 
-  String formatTimestamp(Timestamp timestamp){
+  String formatTimestamp(Timestamp timestamp) {
     DateTime date = timestamp.toDate();
     final DateFormat dateFormat = DateFormat('MMM d, yyyy - hh:mm a');
     return dateFormat.format(date);
   }
 
-  String getDistance(double distance){
-    if(distance > 1){
+  String getDistance(double distance) {
+    if (distance > 1) {
       return '$distance km';
-    }else{
+    } else {
       return '${distance * 1000} m';
     }
   }
 
+  // Keep all the email and SMS functionality unchanged
   Future<void> sendEmailV2(CurrentTrip trip, String userEmail) async {
     final smtpServer = gmail(email, password);
     double CCT = trip.fare * trip.ccTax;
@@ -400,9 +813,9 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
     double promo = taxedFare * trip.promo['discount'];
     double discounted = taxedFare - promo;
     double discount = 0.0;
-    if(trip.discount['peso'] != 0){
+    if (trip.discount['peso'] != 0) {
       discount = trip.discount['peso'];
-    }else if (trip.discount['discount'] != 0){
+    } else if (trip.discount['discount'] != 0) {
       discount = discounted * trip.discount['discount'];
     }
     double discounted2 = discounted - discount;
@@ -411,8 +824,7 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
       ..from = Address(email, 'Pakyaw')
       ..recipients.add(userEmail)
       ..subject = 'Receipt'
-      ..html =
-      '''
+      ..html = '''
       <!DOCTYPE html>
 <html>
 <head>
@@ -542,16 +954,17 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
 </body>
 </html>
       ''';
-    try{
+    try {
       final sendReport = await send(message, smtpServer);
       print('Message sent: $sendReport');
-    } on MailerException catch (e){
+    } on MailerException catch (e) {
       print('Message not sent. Error: $e');
       for (var p in e.problems) {
         print('Problem: ${p.code}: ${p.msg}');
       }
     }
   }
+
   Future<void> sendEmailV1(CurrentTrip trip, String userEmail) async {
     final smtpServer = gmail(email, password);
     double CCT = trip.fare * trip.ccTax;
@@ -560,9 +973,9 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
     double promo = taxedFare * trip.promo['discount'];
     double discounted = taxedFare - promo;
     double discount = 0.0;
-    if(trip.discount['peso'] != 0){
+    if (trip.discount['peso'] != 0) {
       discount = trip.discount['peso'];
-    }else if (trip.discount['discount'] != 0){
+    } else if (trip.discount['discount'] != 0) {
       discount = discounted * trip.discount['discount'];
     }
     double discounted2 = discounted - discount;
@@ -570,8 +983,7 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
       ..from = Address(email, 'Pakyaw')
       ..recipients.add(userEmail)
       ..subject = 'Receipt'
-      ..html =
-      '''
+      ..html = '''
       <!DOCTYPE html>
 <html>
 <head>
@@ -699,21 +1111,22 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
 </body>
 </html>
       ''';
-    try{
+    try {
       final sendReport = await send(message, smtpServer);
       print('Message sent: $sendReport');
-    } on MailerException catch (e){
+    } on MailerException catch (e) {
       print('Message not sent. Error: $e');
       for (var p in e.problems) {
         print('Problem: ${p.code}: ${p.msg}');
       }
     }
   }
+
   Future<void> sendText(CurrentTrip trip, String userNumber) async {
     final receiptText = generateReceiptSMS(
       tripId: trip.id,
       time: trip.createdTime,
-      distance: trip.distance > 1 ? trip.distance : (trip.distance * 1000) ,
+      distance: trip.distance > 1 ? trip.distance : (trip.distance * 1000),
       ccTax: trip.ccTax,
       vatTax: trip.vatTax,
       fare: trip.fare,
@@ -726,13 +1139,9 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
       pickupAddress: trip.pickupAddress,
       dropOffAddress: trip.dropOffAddress,
       changedPickupAddress: trip.changedPickupAddress,
-      changedDropOffAddress: trip.changedDropOffAddress
+      changedDropOffAddress: trip.changedDropOffAddress,
     );
-    smsService.sendLongSMS(
-        userNumber,
-        receiptText,
-        context
-    );
+    smsService.sendLongSMS(userNumber, receiptText, context);
   }
 
   String generateReceiptSMS({
@@ -760,9 +1169,9 @@ class _TripDetailsState extends ConsumerState<TripDetails> with WidgetsBindingOb
     double taxedFare = fare + CCT + vTax;
     double discounted = taxedFare - (taxedFare * promoAmount);
     double minusDiscountAmount = 0;
-    if(discountPeso != 0){
+    if (discountPeso != 0) {
       minusDiscountAmount = discountPeso;
-    }else if(discountAmount != 0){
+    } else if (discountAmount != 0) {
       minusDiscountAmount = discounted * discountAmount;
     }
     double discounted2 = discounted - minusDiscountAmount;
@@ -807,71 +1216,50 @@ Thanks for riding with us!
   BitmapDescriptor destination_flag = BitmapDescriptor.defaultMarker;
   BitmapDescriptor driver_flag = BitmapDescriptor.defaultMarker;
 
-  void customMarker(){
-    BitmapDescriptor.asset(ImageConfiguration(), "assets/destination_flag.png").then((val){
-      setState(() {
-        destination_flag = val;
-      });
+  void customMarker() {
+    // Set destination marker to red (matches PAKYAW error/destination red)
+    setState(() {
+      destination_flag = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
     });
-    BitmapDescriptor.asset(ImageConfiguration(), "assets/driver_flag.png").then((val){
-      setState(() {
-        driver_flag = val;
-      });
+
+    // Set driver marker to blue (matches PAKYAW primary blue)
+    setState(() {
+      driver_flag = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
     });
   }
 
-  @override
-  void initState() {
-    // TODO: implement initState
-    super.initState();
-    customMarker();
-    getCancelCharge();
-    WidgetsBinding.instance.addObserver(this);
-    final trip = ref.read(tripProvider);
-    getPolylineFromPoints(trip.route!);
-    print(widget.tripId);
-    trip.findAndNotifyDriver(widget.tripId, trip.pickupLoc!, trip.vehicleType!);
-  }
-
-  double getActualFare(double fare, double discount, double discount2, double vatTax, double ccTax, double peso){
+  double getActualFare(double fare, double discount, double discount2,
+      double vatTax, double ccTax, double peso) {
     double taxed_fare = fare + (fare * vatTax) + (fare * ccTax);
     double promo_disscounted_fare = taxed_fare - (taxed_fare * discount);
     double discounted_fare = 0.0;
-    if(peso != 0){
+    if (peso != 0) {
       discounted_fare = promo_disscounted_fare - peso;
-    }else if(discount2 != 0){
-      discounted_fare = promo_disscounted_fare - (promo_disscounted_fare * discount2);
+    } else if (discount2 != 0) {
+      discounted_fare =
+          promo_disscounted_fare - (promo_disscounted_fare * discount2);
     }
     return discounted_fare;
   }
-  int getDuration(String time){
+
+  int getDuration(String time) {
     int seconds = int.parse(time.replaceAll('s', ''));
-    if(seconds > 60){
-      int minute = (seconds/60).round();
+    if (seconds > 60) {
+      int minute = (seconds / 60).round();
       return minute;
-    }else{
+    } else {
       return seconds;
     }
-
-  }
-
-
-
-  @override
-  void dispose() {
-    // TODO: implement dispose
-    WidgetsBinding.instance.removeObserver(this);
-    timer?.cancel();
-    super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // TODO: implement didChangeAppLifecycleState
     final currentTrip = ref.read(currentTripProvider(widget.tripId)).value;
-    if(state == AppLifecycleState.detached && currentTrip!.status == 'accepted'){
+    if (state == AppLifecycleState.detached &&
+        currentTrip!.status == 'accepted') {
       DatabaseService databaseService = DatabaseService();
-      databaseService.cancelTrip(widget.tripId, 'N/A', currentTrip.driver['driver_id'], currentTrip.passenger['passenger_id'], cancelCharge!);
+      databaseService.cancelTrip(widget.tripId, 'N/A',
+          currentTrip.driver['driver_id'], currentTrip.passenger['passenger_id'], cancelCharge!);
     }
     super.didChangeAppLifecycleState(state);
   }
@@ -882,13 +1270,13 @@ Thanks for riding with us!
     cancelCharge = value.toDouble();
   }
 
-  void createTime(){
-    timer = Timer.periodic(const Duration(seconds: 1), (timer){
+  void createTime() {
+    timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        if(remainingSeconds > 0){
+        if (remainingSeconds > 0) {
           print('are you the culprit?');
           remainingSeconds--;
-        }else{
+        } else {
           enabledNoShow = true;
           timer.cancel();
         }
@@ -903,339 +1291,764 @@ Thanks for riding with us!
     print('How about here?');
     final trip = ref.watch(tripProvider);
     final userAuth = ref.read(authStateProvider).value;
+
     return currentTrip.when(
-      data: (data){
+      data: (data) {
         print('or are you?');
-        double actualFare = getActualFare(data.fare, data.promo['discount'], data.discount['discount'], data.vatTax, data.ccTax, data.discount['peso']);
+        double actualFare = getActualFare(data.fare, data.promo['discount'],
+            data.discount['discount'], data.vatTax, data.ccTax, data.discount['peso']);
         int duration = getDuration(data.duration);
-        if(data.driver['driver_id'] != ''  && !flag1){
+
+        if (data.driver['driver_id'] != '' && !flag1) {
           flag1 = true;
           remainingSeconds = int.parse(data.driver['duration'].replaceAll('s', ''));
           createTime();
         }
-        if(data.status == 'ongoing'  && !flag2){
+        if (data.status == 'ongoing' && !flag2) {
           flag2 = true;
           timer?.cancel();
         }
-        if(data.status == 'cancelled'  && !flag4){
+        if (data.status == 'cancelled' && !flag4) {
           flag4 = true;
           Navigator.popUntil(context, ModalRoute.withName('/Home'));
         }
         if (data.status == 'completed' && !flag3) {
           flag3 = true;
-          if(userAuth!.email != null && userAuth.email!.isNotEmpty){
-            if(data.changedRoute!.isEmpty){
+          if (userAuth!.email != null && userAuth.email!.isNotEmpty) {
+            if (data.changedRoute!.isEmpty) {
               sendEmailV1(data, userAuth.email!);
-            }else{
+            } else {
               sendEmailV2(data, userAuth.email!);
             }
           }
-          if(userAuth.phoneNumber != null && userAuth.phoneNumber!.isNotEmpty){
+          if (userAuth.phoneNumber != null && userAuth.phoneNumber!.isNotEmpty) {
             print('text sent to ' + userAuth.phoneNumber!);
             sendText(data, userAuth.phoneNumber!);
           }
           WidgetsBinding.instance.addPostFrameCallback((_) async {
             print('How many times');
             DatabaseService database = DatabaseService();
-            double charge = await database.getPassengerCharge(data.passenger['passenger_id']);
-            showRating(context, data.id, data.driver['driver_id'], charge, data.passenger['passenger_id']);
+            double charge =
+            await database.getPassengerCharge(data.passenger['passenger_id']);
+            showRating(context, data.id, data.driver['driver_id'], charge,
+                data.passenger['passenger_id']);
           });
         }
-        if(data.changedRoute!.isNotEmpty && !flag5){
+        if (data.changedRoute!.isNotEmpty && !flag5) {
           flag5 = true;
           print('it now has been trued');
           getPolylineFromPoints2(data.changedRoute!);
         }
-        if(data.driver['driver_id'] != ''){
+        if (data.driver['driver_id'] != '') {
           geo = data.driver['driver_location']['geopoint'];
           driverPos = LatLng(geo!.latitude, geo!.longitude);
         }
+
         return Scaffold(
           resizeToAvoidBottomInset: false,
-          backgroundColor: Colors.grey[350],
+          backgroundColor: lightBackground,
           body: SafeArea(
             child: Stack(
               children: [
+                // Google Map
                 GoogleMap(
                   initialCameraPosition: currentPosition,
                   polylines: Set<Polyline>.of(polyLines.values),
                   myLocationEnabled: true,
-                  onMapCreated: (GoogleMapController mapController){
+                  onMapCreated: (GoogleMapController mapController) {
                     controller.complete(mapController);
                   },
                   markers: {
-                    Marker(
+                    if (pickUp != null)
+                      Marker(
                         markerId: const MarkerId('pickUpLocation'),
                         position: pickUp!,
-                        icon: BitmapDescriptor.defaultMarker
-                    ),
-                    Marker(
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                            BitmapDescriptor.hueGreen),
+                      ),
+                    if (dest != null)
+                      Marker(
                         markerId: const MarkerId('dropOffLocation'),
                         position: dest!,
-                        icon: destination_flag
-                    ),
-                    data.driver['driver_id'] != '' ? Marker(
-                      markerId:  const MarkerId('Driver'),
-                      position: driverPos!,
-                      icon: driver_flag
-                    ) : const Marker(markerId: MarkerId('Driver')),
+                        icon: destination_flag,
+                      ),
+                    if (data.driver['driver_id'] != '' && driverPos != null)
+                      Marker(
+                        markerId: const MarkerId('Driver'),
+                        position: driverPos!,
+                        icon: driver_flag,
+                      ),
                   },
+                  zoomControlsEnabled: false,
+                  myLocationButtonEnabled: false,
+                  mapToolbarEnabled: false,
                 ),
+
+                // Enhanced Bottom Sheet
                 Positioned(
                   bottom: 0.0,
                   left: 0.0,
                   right: 0.0,
-                  child: GestureDetector(
-                    onVerticalDragUpdate: (details){
-                      setState(() {
-                        _currentHeight -= details.delta.dy;
-                        _currentHeight = _currentHeight.clamp(_minHeight, _maxHeight);
-                      });
-                    },
-                    child: Container(
-                      height: _currentHeight,
-                      decoration: const BoxDecoration(
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 1),
+                      end: Offset.zero,
+                    ).animate(_slideController),
+                    child: GestureDetector(
+                      onVerticalDragUpdate: (details) {
+                        setState(() {
+                          _currentHeight -= details.delta.dy;
+                          _currentHeight = _currentHeight.clamp(_minHeight, _maxHeight);
+                        });
+                      },
+                      child: Container(
+                        height: _currentHeight,
+                        decoration: const BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.only(topLeft: Radius.circular(22.0), topRight: Radius.circular(22.0))
-                      ),
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: 25,
-                            child: Center(
-                              child: Container(
-                                width: 50,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(24.0),
+                            topRight: Radius.circular(24.0),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 10,
+                              offset: Offset(0, -5),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            // Handle Bar
+                            Container(
+                              height: 25,
+                              child: Center(
+                                child: Container(
+                                  width: 50,
+                                  height: 5,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[300],
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          Column(
-                            children: [
-                              Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 10.0),
-                                  child: data.driver['driver_id'] == '' ? const Searching() : DriverFound(driver: data.driver, vehicle: data.vehicle)
-                              ),
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 5.0),
-                                child: Divider(height: 20.0, thickness: 5.0,),
-                              ),
-                            ],
-                          ),
-                          //Trip details
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 0.0),
+
+                            // Driver Status
+                            Column(
+                              children: [
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                                  child: data.driver['driver_id'] == ''
+                                      ? const Searching()
+                                      : DriverFound(
+                                      driver: data.driver, vehicle: data.vehicle),
+                                ),
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                                  height: 1,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.transparent,
+                                        Colors.grey[300]!,
+                                        Colors.transparent,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Trip Details Content
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 20.0),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Column(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(5.0),
-                                          margin: const EdgeInsets.all(5.0),
-                                          decoration: BoxDecoration(
-                                              borderRadius: const BorderRadius.all(Radius.circular(10.0)),
-                                              color: Colors.grey[350]
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  SizedBox(width: SizeConfig.blockSizeHorizontal,),
-                                                  Icon(Icons.trip_origin, size: SizeConfig.safeBlockHorizontal * 7,),
-                                                  SizedBox(width: SizeConfig.blockSizeHorizontal,),
-                                                  Expanded(
-                                                    child: ListTile(
-                                                      title: Text(
-                                                        data.changedPickupAddress == '' ? data.pickupAddress : data.changedPickupAddress,
+                                    // Location Cards
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            lightBackground,
+                                            Colors.white,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(16.0),
+                                        border: Border.all(
+                                          color: Colors.grey[200]!,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          // Pickup Location
+                                          Container(
+                                            padding: const EdgeInsets.all(16.0),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: successGreen.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.trip_origin,
+                                                    size: (SizeConfig.safeBlockHorizontal * 5).clamp(20.0, 28.0),
+                                                    color: successGreen,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        'Pickup Location',
                                                         style: TextStyle(
-                                                            fontSize: SizeConfig.safeBlockHorizontal * 4,
-                                                            fontWeight: FontWeight.bold,
-                                                            overflow: TextOverflow.ellipsis
+                                                          fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(12.0, 14.0),
+                                                          color: Colors.grey[600],
+                                                          fontFamily: 'Montserrat',
                                                         ),
                                                       ),
-                                                    ),
-                                                  )
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        data.changedPickupAddress == ''
+                                                            ? data.pickupAddress
+                                                            : data.changedPickupAddress,
+                                                        style: TextStyle(
+                                                          fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(14.0, 16.0),
+                                                          fontWeight: FontWeight.w600,
+                                                          color: darkGray,
+                                                          fontFamily: 'Montserrat',
+                                                        ),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Divider
+                                          Container(
+                                            height: 1,
+                                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  Colors.transparent,
+                                                  Colors.grey[300]!,
+                                                  Colors.transparent,
                                                 ],
                                               ),
-                                              Divider(height: SizeConfig.blockSizeVertical,),
-                                              Row(
-                                                children: [
-                                                  SizedBox(width: SizeConfig.blockSizeHorizontal,),
-                                                  Icon(Icons.pin_drop, size: SizeConfig.safeBlockHorizontal * 7,),
-                                                  SizedBox(width: SizeConfig.blockSizeHorizontal,),
-                                                  Expanded(
-                                                    child: ListTile(
-                                                      title: Text(
-                                                        data.changedDropOffAddress == '' ? data.dropOffAddress : data.changedDropOffAddress,
+                                            ),
+                                          ),
+
+                                          // Drop-off Location
+                                          Container(
+                                            padding: const EdgeInsets.all(16.0),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: errorRed.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.pin_drop,
+                                                    size: (SizeConfig.safeBlockHorizontal * 5).clamp(20.0, 28.0),
+                                                    color: errorRed,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        'Drop-off Location',
                                                         style: TextStyle(
-                                                            fontSize: SizeConfig.safeBlockHorizontal * 4,
-                                                            fontWeight: FontWeight.bold,
-                                                            overflow: TextOverflow.ellipsis
+                                                          fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(12.0, 14.0),
+                                                          color: Colors.grey[600],
+                                                          fontFamily: 'Montserrat',
                                                         ),
                                                       ),
-                                                    ),
-                                                  )
-                                                ],
-                                              )
-                                            ],
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        data.changedDropOffAddress == ''
+                                                            ? data.dropOffAddress
+                                                            : data.changedDropOffAddress,
+                                                        style: TextStyle(
+                                                          fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(14.0, 16.0),
+                                                          fontWeight: FontWeight.w600,
+                                                          color: darkGray,
+                                                          fontFamily: 'Montserrat',
+                                                        ),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6.0,),
-                                    Container(
-                                        margin: const EdgeInsets.symmetric(horizontal: 5.0),
-                                        decoration: BoxDecoration(
-                                            borderRadius: const BorderRadius.all(Radius.circular(10.0)),
-                                            color: Colors.grey[350]
-                                        ),
-                                        child: ListTile(
-                                          leading: Image.network(trip.vehicleTypeImage!, width: SizeConfig.blockSizeHorizontal * 7, height: SizeConfig.blockSizeVertical * 4,),
-                                          title: Text(data.vehicleType, style: TextStyle(fontWeight: FontWeight.bold, fontSize: SizeConfig.safeBlockHorizontal * 4),),
-                                          trailing: Text('₱${actualFare.toStringAsFixed(2)}', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold),),
-                                        )
-                                    ),
-                                    const SizedBox(height: 10.0,),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                      children: [
-                                        Text('Distance: ${data.distance} km', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold),),
-                                        Text(int.parse(data.duration.replaceAll('s', '')) < 60 ? 'Duration: $duration sec' : 'Duration: $duration min', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10.0,),
-                                    Center(
-                                      child: TextButton(
-                                        onPressed: data.changedRoute!.isEmpty ? (){
-                                          Navigator.push(context, MaterialPageRoute(builder: (context) => ChangeDropOffSelect(tripId: data.id,)));
-                                        } : null,
-                                        child: Text(
-                                          'Change Location',
-                                          style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold),
-
-                                        ),
-
+                                        ],
                                       ),
                                     ),
-                                    SizedBox(height: SizeConfig.blockSizeVertical * 1.5,),
+
+                                    const SizedBox(height: 16.0),
+
+                                    // Vehicle & Fare Card
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [primaryNavy, brightBlue],
+                                        ),
+                                        borderRadius: BorderRadius.circular(16.0),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: primaryNavy.withOpacity(0.3),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16.0),
+                                        child: Row(
+                                          children: [
+                                            // Vehicle Image
+                                            Container(
+                                              width: 60,
+                                              height: 40,
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: trip.vehicleTypeImage != null
+                                                  ? ClipRRect(
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Image.network(
+                                                  trip.vehicleTypeImage!,
+                                                  fit: BoxFit.contain,
+                                                  color: Colors.white,
+                                                  errorBuilder: (context, error, stackTrace) {
+                                                    return const Icon(
+                                                      Icons.directions_car,
+                                                      color: Colors.white,
+                                                      size: 24,
+                                                    );
+                                                  },
+                                                ),
+                                              )
+                                                  : const Icon(
+                                                Icons.directions_car,
+                                                color: Colors.white,
+                                                size: 24,
+                                              ),
+                                            ),
+
+                                            const SizedBox(width: 16),
+
+                                            // Vehicle Details
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    data.vehicleType,
+                                                    style: TextStyle(
+                                                      fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(16.0, 18.0),
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.white,
+                                                      fontFamily: 'Montserrat',
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Total Fare',
+                                                    style: TextStyle(
+                                                      fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(12.0, 14.0),
+                                                      color: Colors.white.withOpacity(0.8),
+                                                      fontFamily: 'Montserrat',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+
+                                            // Fare Amount
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                '₱${actualFare.toStringAsFixed(2)}',
+                                                style: TextStyle(
+                                                  fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(16.0, 18.0),
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Colors.white,
+                                                  fontFamily: 'Montserrat',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 16.0),
+
+                                    // Trip Statistics
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                                       children: [
                                         Expanded(
                                           child: Container(
-                                            margin: EdgeInsets.symmetric(horizontal: SizeConfig.blockSizeHorizontal * 3),
+                                            padding: const EdgeInsets.all(16),
                                             decoration: BoxDecoration(
-                                                borderRadius: const BorderRadius.all(Radius.circular(10.0)),
-                                                border: Border.all(color: Colors.black)
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  lightBackground,
+                                                  Colors.white,
+                                                ],
+                                              ),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Colors.grey[200]!,
+                                                width: 1,
+                                              ),
                                             ),
-                                            child: ListTile(
-                                              leading: const Icon(Icons.money_outlined),
-                                              title: Text(data.paymentMethod['payment_method'], style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold),),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  Icons.straighten,
+                                                  color: brightBlue,
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  '${data.distance} km',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 16.0),
+                                                    fontWeight: FontWeight.w600,
+                                                    color: darkGray,
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'Distance',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(12.0, 14.0),
+                                                    color: Colors.grey[600],
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         ),
+
+                                        const SizedBox(width: 12),
+
                                         Expanded(
                                           child: Container(
-                                            margin: EdgeInsets.symmetric(horizontal: SizeConfig.blockSizeHorizontal * 3),
+                                            padding: const EdgeInsets.all(16),
                                             decoration: BoxDecoration(
-                                                borderRadius: const BorderRadius.all(Radius.circular(10.0)),
-                                                border: Border.all(color: Colors.black)
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  lightBackground,
+                                                  Colors.white,
+                                                ],
+                                              ),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Colors.grey[200]!,
+                                                width: 1,
+                                              ),
                                             ),
-                                            child: ListTile(
-                                              leading: const Icon(Icons.discount),
-                                              title: Text(data.promo['discount'] != 0.0 ? '${(data.promo['discount'] * 100)}%' : 'N/A', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold),),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  Icons.access_time,
+                                                  color: brightBlue,
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  int.parse(data.duration.replaceAll('s', '')) < 60
+                                                      ? '$duration sec'
+                                                      : '$duration min',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 16.0),
+                                                    fontWeight: FontWeight.w600,
+                                                    color: darkGray,
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'Duration',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(12.0, 14.0),
+                                                    color: Colors.grey[600],
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 10.0,),
+
+                                    const SizedBox(height: 16.0),
+
+                                    // Change Location Button
+                                    if (data.changedRoute!.isEmpty)
+                                      Center(
+                                        child: TextButton.icon(
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    ChangeDropOffSelect(tripId: data.id),
+                                              ),
+                                            );
+                                          },
+                                          icon: Icon(
+                                            Icons.edit_location,
+                                            color: brightBlue,
+                                            size: 20,
+                                          ),
+                                          label: Text(
+                                            'Change Destination',
+                                            style: TextStyle(
+                                              fontSize: (SizeConfig.safeBlockHorizontal * 4).clamp(14.0, 16.0),
+                                              fontWeight: FontWeight.w600,
+                                              color: brightBlue,
+                                              fontFamily: 'Montserrat',
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                    const SizedBox(height: 16.0),
+
+                                    // Payment & Discount Cards
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  lightBackground,
+                                                  Colors.white,
+                                                ],
+                                              ),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Colors.grey[200]!,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  Icons.payment,
+                                                  color: brightBlue,
+                                                  size: 20,
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  data.paymentMethod['payment_method'],
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(12.0, 14.0),
+                                                    fontWeight: FontWeight.w600,
+                                                    color: darkGray,
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                Text(
+                                                  'Payment',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(10.0, 12.0),
+                                                    color: Colors.grey[600],
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+
+                                        const SizedBox(width: 12),
+
+                                        Expanded(
+                                          child: Container(
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  lightBackground,
+                                                  Colors.white,
+                                                ],
+                                              ),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Colors.grey[200]!,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  Icons.local_offer,
+                                                  color: brightBlue,
+                                                  size: 20,
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  data.promo['discount'] != 0.0
+                                                      ? '${(data.promo['discount'] * 100)}%'
+                                                      : 'N/A',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 3.5).clamp(12.0, 14.0),
+                                                    fontWeight: FontWeight.w600,
+                                                    color: darkGray,
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                Text(
+                                                  'Discount',
+                                                  style: TextStyle(
+                                                    fontSize: (SizeConfig.safeBlockHorizontal * 3).clamp(10.0, 12.0),
+                                                    color: Colors.grey[600],
+                                                    fontFamily: 'Montserrat',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 24.0),
+
+                                    // Action Buttons
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        GestureDetector(
-                                          onTap: () async {
-                                            // showRating(context);
-                                            if(data.driver['driver_id'] != ''){
-                                              await showBeforeCancel(context);
-                                            }
-                                            showCancelDialog(context, data.id, data.driver['driver_id'], data.passenger['passenger_id']);
-                                          },
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius: BorderRadius.circular(22.0),
-                                                border: Border.all(color: Colors.black),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                      color: Colors.black,
-                                                      blurRadius: 6.0,
-                                                      spreadRadius: 0.5,
-                                                      offset: Offset(
-                                                          0.7,
-                                                          0.7
-                                                      )
-                                                  )
-                                                ]
-                                            ),
-                                            child: const CircleAvatar(
-                                              backgroundColor: Colors.white,
-                                              child: Icon(Icons.close, color: Colors.black,),
+                                        // Cancel Button
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(color: errorRed, width: 2),
+                                            borderRadius: BorderRadius.circular(25),
+                                          ),
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              borderRadius: BorderRadius.circular(25),
+                                              onTap: () async {
+                                                if (data.driver['driver_id'] != '') {
+                                                  await showBeforeCancel(context);
+                                                }
+                                                showCancelDialog(context, data.id,
+                                                    data.driver['driver_id'], data.passenger['passenger_id']);
+                                              },
+                                              child: Container(
+                                                width: 50,
+                                                height: 50,
+                                                alignment: Alignment.center,
+                                                child: Icon(
+                                                  Icons.close,
+                                                  color: errorRed,
+                                                  size: 24,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 15.0,),
-                                        data.status == 'ongoing' ? GestureDetector(
-                                          onTap: () async {
-                                            DatabaseService database = DatabaseService();
-                                            // showRating(context)
-                                            String phoneNum = await database.getEmergencyPhone();
-                                            await database.cancelTripEmergency(data.id, data.driver['driver_id'], data.passenger['passenger_id']);
-                                            await telephony.dialPhoneNumber('+63$phoneNum');
-                                            Navigator.popUntil(context, ModalRoute.withName('/Home'));
-                                          },
-                                          child: Container(
+
+                                        const SizedBox(width: 20.0),
+
+                                        // Emergency Button (only show during ongoing trips)
+                                        if (data.status == 'ongoing')
+                                          Container(
                                             decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius: BorderRadius.circular(22.0),
-                                                border: Border.all(color: Colors.black),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                      color: Colors.black,
-                                                      blurRadius: 6.0,
-                                                      spreadRadius: 0.5,
-                                                      offset: Offset(
-                                                          0.7,
-                                                          0.7
-                                                      )
-                                                  )
-                                                ]
+                                              gradient: LinearGradient(
+                                                colors: [errorRed, Colors.red[700]!],
+                                              ),
+                                              borderRadius: BorderRadius.circular(25),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: errorRed.withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
                                             ),
-                                            child: const CircleAvatar(
-                                              backgroundColor: Colors.white,
-                                              child: Icon(Icons.call, color: Colors.black,),
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              child: InkWell(
+                                                borderRadius: BorderRadius.circular(25),
+                                                onTap: () async {
+                                                  DatabaseService database = DatabaseService();
+                                                  String phoneNum = await database.getEmergencyPhone();
+                                                  await database.cancelTripEmergency(data.id,
+                                                      data.driver['driver_id'], data.passenger['passenger_id']);
+                                                  await telephony.dialPhoneNumber('+63$phoneNum');
+                                                  Navigator.popUntil(context, ModalRoute.withName('/Home'));
+                                                },
+                                                child: Container(
+                                                  width: 50,
+                                                  height: 50,
+                                                  alignment: Alignment.center,
+                                                  child: FadeTransition(
+                                                    opacity: _pulseController,
+                                                    child: const Icon(
+                                                      Icons.call,
+                                                      color: Colors.white,
+                                                      size: 24,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ) : Container(),
                                       ],
                                     ),
-                                    const SizedBox(height: 10.0,),
+
+                                    const SizedBox(height: 20.0),
                                   ],
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-
                 ),
               ],
             ),

@@ -1,15 +1,15 @@
 import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:pakyaw/models/history_ride_model.dart';
-import 'package:pakyaw/services/database.dart';
+import 'package:pakyaw/models/trip_models.dart';
 import 'package:pakyaw/shared/size_config.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+
 
 class HistoryDetails extends StatefulWidget {
-  final Trips trip;
+  final BaseTrip trip;
   const HistoryDetails({super.key, required this.trip});
 
   @override
@@ -17,530 +17,755 @@ class HistoryDetails extends StatefulWidget {
 }
 
 class _HistoryDetailsState extends State<HistoryDetails> {
-  DatabaseService databaseService = DatabaseService();
-  bool isChangedRoute = false;
-  LatLng? position;
-  LatLng? pickUp;
-  LatLng? dest;
-
-  Map<PolylineId, Polyline> polyLines = {};
-
-  Completer<GoogleMapController> controller = Completer<GoogleMapController>();
-
-  void fitPolylineToMap(List<LatLng> points) async {
-    if (points.isEmpty) return;
-
-    double minLat = points[0].latitude;
-    double maxLat = points[0].latitude;
-    double minLng = points[0].longitude;
-    double maxLng = points[0].longitude;
-
-    for (LatLng point in points) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLng) minLng = point.longitude;
-      if (point.longitude > maxLng) maxLng = point.longitude;
-    }
-
-    LatLngBounds bounds = LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
-    int half = points.length ~/ 2;
-    int max = points.length - 1;
-    position = LatLng(points[half].latitude, points[half].longitude);
-    setState(() {
-      pickUp = LatLng(points[0].latitude, points[0].longitude);
-      dest = LatLng(points[max].latitude, points[max].longitude);
-    });
-
-    GoogleMapController mapController = await controller.future;
-    mapController.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
-  }
-
-  void getPolylineFromPoints(List<LatLng> coordinates) async {
-    PolylineId polylineId = const PolylineId("driverToPickup");
-    Polyline polyline = Polyline(
-        polylineId: polylineId,
-        color: Colors.black,
-        points: coordinates,
-        width: 4
-    );
-    setState(() {
-      polyLines.clear();
-      polyLines[polylineId] = polyline;
-    });
-    fitPolylineToMap(coordinates);
-  }
-
-  void getPolylineFromPoints2(List<LatLng> coordinates) async {
-    PolylineId polylineId = const PolylineId("PickupToDest");
-    Polyline polyline = Polyline(
-        polylineId: polylineId,
-        color: Colors.black,
-        points: coordinates,
-        width: 4
-    );
-    setState(() {
-      polyLines.clear();
-      polyLines[polylineId] = polyline;
-    });
-    fitPolylineToMap(coordinates);
-  }
-
-  String formatTimestamp(Timestamp timestamp){
-    DateTime date = timestamp.toDate();
-    final DateFormat dateFormat = DateFormat('MMM d, yyyy - hh:mm a');
-    return dateFormat.format(date);
-  }
+  final Completer<GoogleMapController> _controller = Completer();
+  Set<Marker> markers = {};
+  Set<Polyline> polylines = {};
+  bool isLoadingRoute = true;
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
-    getPolylineFromPoints(widget.trip.route);
+    _initializeMap();
   }
 
-  double getActualFare(double fare, double discount, bool vat){
-    double vatVal = 0.0;
-    if(vat){
-      vatVal = (fare * discount) * 0.12;
-    }
-    if(discount == 0.0){
-      return (fare + (fare * 0.03)) + vatVal;
-    }else{
-      double discounted = fare - (fare * discount);
-      return (discounted + (discounted * 0.03)) + vatVal;
+  Future<void> _initializeMap() async {
+    if (widget.trip is PakyawTrip) {
+      _initializePakyawMap();
+    } else if (widget.trip is CarpoolTrip) {
+      await _initializeCarpoolMap();
     }
   }
 
-  showSuccess(BuildContext context1){
-    SizeConfig().init(context1);
-    showDialog(context: context, builder: (context) => AlertDialog(
-      content: SizedBox(
-        height: SizeConfig.blockSizeVertical * 23,
-        child: Column(
-          children: [
-            Image(
-              image: const AssetImage('assets/sent.png'),
-              height: SizeConfig.blockSizeVertical * 10,
-              width: SizeConfig.blockSizeHorizontal * 30,
-            ),
-            Text(
-              'Report has been sent.',
-              style: TextStyle(
-                  fontSize: SizeConfig.safeBlockHorizontal * 5,
-                  color: Colors.black,
-                  fontWeight: FontWeight.w500
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+  void _initializePakyawMap() {
+    final pakyawTrip = widget.trip as PakyawTrip;
+
+    // Add markers
+    markers.add(
+      Marker(
+        markerId: const MarkerId('pickup'),
+        position: LatLng(
+          pakyawTrip.pickUpLoc.latitude,
+          pakyawTrip.pickUpLoc.longitude,
         ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Pickup'),
       ),
-    ));
-  }
-  showError(BuildContext context1){
-    SizeConfig().init(context1);
-    showDialog(context: context, builder: (context) => AlertDialog(
-      content: SizedBox(
-        height: SizeConfig.blockSizeVertical * 23,
-        child: Column(
-          children: [
-            Image(
-              image: const AssetImage('assets/cross.png'),
-              height: SizeConfig.blockSizeVertical * 10,
-              width: SizeConfig.blockSizeHorizontal * 30,
-            ),
-            Text(
-              'An error occurred.',
-              style: TextStyle(
-                  fontSize: SizeConfig.safeBlockHorizontal * 5,
-                  color: Colors.black,
-                  fontWeight: FontWeight.w500
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+    );
+
+    markers.add(
+      Marker(
+        markerId: const MarkerId('dropoff'),
+        position: LatLng(
+          pakyawTrip.dropOffLoc.latitude,
+          pakyawTrip.dropOffLoc.longitude,
         ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Drop-off'),
       ),
-    ));
+    );
+
+    // Add polyline
+    if (pakyawTrip.route.isNotEmpty) {
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: pakyawTrip.route,
+          color: Colors.blue,
+          width: 5,
+        ),
+      );
+    }
+
+    setState(() {
+      isLoadingRoute = false;
+    });
   }
 
-  showReportDialog(BuildContext context1, Map<String, dynamic> driverId, Map<String, dynamic> passengerId, String tripId){
-    TextEditingController other = TextEditingController();
-    showDialog(context: context, builder: (context) => AlertDialog(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Image(
-              image: const AssetImage('assets/alert.png'),
-              height: SizeConfig.blockSizeVertical * 10,
-              width: SizeConfig.blockSizeHorizontal * 30,
-            ),
-            const SizedBox(height: 10,),
-            const Text('Report'),
-          ],
-        ),
-        content: TextField(
-          controller: other,
-          minLines: 1,
-          maxLines: null,
-          style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.w500),
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              bool result = await databaseService.reportIncident(tripId, driverId, passengerId, other.text);
-              if(result){
-                Navigator.pop(context);
-                showSuccess(context1);
-              }else{
-                Navigator.pop(context);
-                showError(context1);
-              }
+  Future<void> _initializeCarpoolMap() async {
+    final carpoolTrip = widget.trip as CarpoolTrip;
 
-            },
-            child: const Text('Report', style: TextStyle(fontSize: 20.0),),
+    // Add markers
+    markers.add(
+      Marker(
+        markerId: const MarkerId('pickup'),
+        position: LatLng(
+          carpoolTrip.pickup['lat'],
+          carpoolTrip.pickup['lng'],
+        ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(title: carpoolTrip.pickup['name'] ?? 'Pickup'),
+      ),
+    );
 
-          )
-        ]
-    ));
+    markers.add(
+      Marker(
+        markerId: const MarkerId('dropoff'),
+        position: LatLng(
+          carpoolTrip.dropoff['lat'],
+          carpoolTrip.dropoff['lng'],
+        ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(title: carpoolTrip.dropoff['name'] ?? 'Drop-off'),
+      ),
+    );
+
+    // Decode polyline
+    if (carpoolTrip.routeTaken.isNotEmpty) {
+      try {
+        PolylinePoints polylinePoints = PolylinePoints();
+        List<PointLatLng> result = polylinePoints.decodePolyline(carpoolTrip.routeTaken);
+
+        List<LatLng> polylineCoordinates = result
+            .map((point) => LatLng(point.latitude, point.longitude))
+            .toList();
+
+        polylines.add(
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: polylineCoordinates,
+            color: Colors.green,
+            width: 5,
+          ),
+        );
+      } catch (e) {
+        print('Error decoding polyline: $e');
+      }
+    }
+
+    setState(() {
+      isLoadingRoute = false;
+    });
+  }
+
+  LatLng _getInitialCameraPosition() {
+    if (widget.trip is PakyawTrip) {
+      final pakyawTrip = widget.trip as PakyawTrip;
+      return LatLng(
+        pakyawTrip.pickUpLoc.latitude,
+        pakyawTrip.pickUpLoc.longitude,
+      );
+    } else if (widget.trip is CarpoolTrip) {
+      final carpoolTrip = widget.trip as CarpoolTrip;
+      return LatLng(
+        carpoolTrip.pickup['lat'],
+        carpoolTrip.pickup['lng'],
+      );
+    }
+    return const LatLng(0, 0);
   }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    int getDuration(String time){
-      int seconds = int.parse(time.replaceAll('s', ''));
-      if(seconds > 60){
-        int minute = (seconds/60).round();
-        return minute;
-      }else{
-        return seconds;
-      }
 
-    }
-    int duration = getDuration(widget.trip.duration);
-    double fare = widget.trip.fare + (widget.trip.fare * widget.trip.vatTax) + (widget.trip.fare * widget.trip.ccTax);
-    double promoDiscount = fare * widget.trip.promo['discount'];
-    double discountFare = fare - promoDiscount;
-    double spDiscount = 0.0;
-    if(widget.trip.discount['peso'] != 0.0){
-      spDiscount = widget.trip.discount['peso'];
-    }else if(widget.trip.discount['discount'] != 0.0){
-      spDiscount = discountFare * widget.trip.discount['discount'];
-    }
-    double discountFare2 = discountFare - spDiscount;
     return Scaffold(
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20.0),
-          child: Text(
-            'Trip Details',
-            style: TextStyle(
-                fontSize: SizeConfig.safeBlockHorizontal * 6,
-              fontWeight: FontWeight.bold
-            ),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Trip Details',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              showReportDialog(context, widget.trip.driver, widget.trip.passenger, widget.trip.uid);
-            },
-            icon: const Icon(
-              Icons.report,
-              color: Colors.black,
-            ),
-            label: const Text(
-              'Report',
-              style: TextStyle(
-                color: Colors.black,
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Map Section
+            Hero(
+              tag: 'trip_${widget.trip.uid}',
+              child: Container(
+                height: 300,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                ),
+                child: isLoadingRoute
+                    ? const Center(child: CircularProgressIndicator())
+                    : GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _getInitialCameraPosition(),
+                    zoom: 13,
+                  ),
+                  markers: markers,
+                  polylines: polylines,
+                  onMapCreated: (GoogleMapController controller) {
+                    _controller.complete(controller);
+                  },
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+
+            // Trip Details
+            if (widget.trip is PakyawTrip)
+              _buildPakyawDetails()
+            else if (widget.trip is CarpoolTrip)
+              _buildCarpoolDetails(),
+          ],
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.only(left: 10.0, right: 10.0),
-        child: CustomScrollView(
-          slivers: [
-            SliverAppBar(
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(20.0),
-                  bottomRight: Radius.circular(20.0), ), ),
-              expandedHeight: SizeConfig.blockSizeVertical * 30,
-              pinned: false,
-              floating: false,
-              automaticallyImplyLeading: false,
-              flexibleSpace: FlexibleSpaceBar(
-                background: Column(
-                  children: [
-                    if (widget.trip.changedRoute != null)
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Row(
+    );
+  }
+
+
+
+  Widget _buildPakyawDetails() {
+    final trip = widget.trip as PakyawTrip;
+
+    // 🧮 Compute fare values
+    double baseFare = trip.fare;
+    double vatAmount = trip.fare * (trip.vatTax ?? 0.0);
+
+    // Discount (peso or percentage)
+    double discount = 0.0;
+    if ((trip.discount?['peso'] ?? 0.0) != 0.0) {
+      discount = trip.discount['peso'];
+    } else if ((trip.discount?['discount'] ?? 0.0) != 0.0) {
+      discount = (baseFare + vatAmount) * trip.discount['discount'];
+    }
+
+    // Final total fare
+    double totalFare = (baseFare + vatAmount) - discount;
+
+    // Currency format (₱)
+    final currencyFormat = NumberFormat.currency(locale: 'en_PH', symbol: '₱');
+
+    return Column(
+      children: [
+        // 🗺️ Route Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Route Information', Icons.route),
+              const SizedBox(height: 16),
+              _buildLocationRow(Icons.circle, Colors.green, 'Pickup', trip.pickupAddress),
+              const SizedBox(height: 12),
+              _buildLocationRow(Icons.location_on, Colors.red, 'Drop-off', trip.dropOffAddress),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _buildInfoChip(Icons.straighten, '${trip.distance.toStringAsFixed(2)} km'),
+                  const SizedBox(width: 8),
+                  _buildInfoChip(Icons.access_time, trip.duration),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // 👨‍✈️ Driver Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Driver Information', Icons.person),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundImage: trip.driver['driver_profile'] != null &&
+                        trip.driver['driver_profile'].isNotEmpty
+                        ? NetworkImage(trip.driver['driver_profile'])
+                        : null,
+                    child: trip.driver['driver_profile'] == null ||
+                        trip.driver['driver_profile'].isEmpty
+                        ? const Icon(Icons.person, size: 30)
+                        : null,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          trip.driver['driver_name'] ?? 'Unknown Driver',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
                           children: [
+                            Icon(Icons.star, size: 16, color: Colors.amber[700]),
+                            const SizedBox(width: 4),
                             Text(
-                              isChangedRoute ? 'Changed route' : 'Original route',
-                              style: TextStyle(
-                                  fontSize: SizeConfig.safeBlockHorizontal * 3.3,
-                                  fontWeight: FontWeight.w400,
-                                  color: Colors.black
-                              ),
-                            ),
-                            Switch(
-                              value: isChangedRoute,
-                              onChanged: (value) {
-                                if(isChangedRoute){
-                                  getPolylineFromPoints(widget.trip.route);
-                                }else{
-                                  getPolylineFromPoints2(widget.trip.changedRoute!);
-                                }
-                                setState(() {
-                                  isChangedRoute = !isChangedRoute;
-                                });
-                              },
+                              '${trip.driver['rating'] ?? 0.0}',
+                              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
                             ),
                           ],
                         ),
-                      ),
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10.0)
-                        ),
-                        child: GoogleMap(
-                          onMapCreated: (GoogleMapController mapController) {
-                            controller.complete(mapController);
-                          },
-                          zoomControlsEnabled: false,
-                          initialCameraPosition: CameraPosition(
-                            target: position!,
-                            zoom: 12,
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // 🚗 Vehicle Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Vehicle Information', Icons.directions_car),
+              const SizedBox(height: 16),
+              _buildInfoRow('Model', trip.vehicle['model'] ?? 'N/A'),
+              _buildInfoRow('Plate Number', trip.vehicle['plate_num'] ?? 'N/A'),
+              _buildInfoRow('Type', trip.vehicleType),
+            ],
+          ),
+        ),
+
+        // 💳 Payment Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Payment Information', Icons.payment),
+              const SizedBox(height: 16),
+              _buildFareRow('Base Fare', baseFare),
+              if (vatAmount > 0) _buildFareRow('VAT', vatAmount),
+              if (discount > 0)
+                _buildFareRow(
+                  'Discount (${trip.discount['discount_name'] ?? ''})',
+                  -discount,
+                  isDiscount: true,
+                ),
+              const Divider(height: 24),
+              _buildFareRow('Total', totalFare, isTotal: true),
+              const SizedBox(height: 12),
+              _buildInfoRow('Payment Method', trip.paymentMethod['payment_method'] ?? 'Cash'),
+            ],
+          ),
+        ),
+
+        // 📋 Trip Status
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Trip Status', Icons.info),
+              const SizedBox(height: 16),
+              _buildInfoRow('Status', trip.status.toUpperCase()),
+              _buildInfoRow(
+                'Date',
+                DateFormat('MMMM dd, yyyy - hh:mm a').format(trip.createdTime.toDate()),
+              ),
+              if (trip.rating > 0) _buildInfoRow('Your Rating', '${trip.rating} ⭐'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildCarpoolDetails() {
+    final trip = widget.trip as CarpoolTrip;
+
+    return Column(
+      children: [
+        // Trip Type Badge
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.people, color: Colors.green, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'CARPOOL TRIP',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Route Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Route Information', Icons.route),
+              const SizedBox(height: 16),
+              _buildLocationRow(
+                Icons.circle,
+                Colors.green,
+                'Pickup',
+                trip.pickup['name'] ?? 'Unknown location',
+              ),
+              const SizedBox(height: 12),
+              _buildLocationRow(
+                Icons.location_on,
+                Colors.red,
+                'Drop-off',
+                trip.dropoff['name'] ?? 'Unknown location',
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _buildInfoChip(
+                    Icons.straighten,
+                    '${trip.distanceKm.toStringAsFixed(2)} km',
+                  ),
+                  const SizedBox(width: 8),
+                  _buildInfoChip(
+                    Icons.access_time,
+                    '${(trip.durationSeconds / 60).toStringAsFixed(0)} min',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // Driver Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Driver Information', Icons.person),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: Colors.blue.shade100,
+                    child: const Icon(Icons.person, size: 30, color: Colors.blue),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          trip.driverName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
-                          polylines: Set<Polyline>.of(polyLines.values),
-                          markers: {
-                            Marker(
-                                markerId: const MarkerId('pickUpLocation'),
-                                position: pickUp!,
-                                icon: BitmapDescriptor.defaultMarker
-                            ),
-                            Marker(
-                                markerId: const MarkerId('dropOffLocation'),
-                                position: dest!,
-                                icon: BitmapDescriptor.defaultMarker
-                            ),
-                          },
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Carpool Driver',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // Vehicle Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Vehicle Information', Icons.directions_car),
+              const SizedBox(height: 16),
+              _buildInfoRow('Model', trip.vehicleModel),
+              _buildInfoRow('Plate Number', trip.plateNum),
+            ],
+          ),
+        ),
+
+        // Passengers Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(
+                'Passengers (${trip.passengerCount})',
+                Icons.people,
+              ),
+              const SizedBox(height: 16),
+              ...trip.passengers.map((passenger) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.grey.shade300,
+                      child: Text(
+                        passenger.userName[0].toUpperCase(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            passenger.userName,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            passenger.userEmail,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '₱${passenger.fareOwed.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade700,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ),
-            SliverList(
-              delegate: SliverChildListDelegate([
-                SizedBox(height: SizeConfig.blockSizeVertical * 2,),
-                Center(
-                  child: Text(
-                    'Trip ID: ${widget.trip.uid}',
-                    style: TextStyle(
-                      fontSize: SizeConfig.safeBlockHorizontal * 5,
-                      fontWeight: FontWeight.w300,
-                    ),
-                  ),
-                ),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.5,),
-                Text(
-                  'Date:${formatTimestamp(widget.trip.createdTime)}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  int.parse(widget.trip.duration.replaceAll('s', '')) < 60 ? 'Duration: $duration sec' : 'Duration: $duration min',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  widget.trip.distance > 1 ? 'Distance:${widget.trip.distance}km'
-                      : 'Distance:${(widget.trip.distance * 1000)}m',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Fare: ₱${fare.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Payment Method: ${widget.trip.paymentMethod['payment_method']}(${widget.trip.paymentMethod['account_num']})',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Promos Applied: ${promoDiscount != 0 ? '${widget.trip.promo['promo_name']}(-₱${promoDiscount.toStringAsFixed(2)})' : 'N/A'}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Discount Applied: ${spDiscount != 0 ? '${widget.trip.discount['discount_name']}(-₱${spDiscount.toStringAsFixed(2)})' :  'N/A'}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Driver:',
-                  style: TextStyle(
-                      fontSize: SizeConfig.safeBlockHorizontal * 6,
-                      color: Colors.black,
-                      fontWeight: FontWeight.w500
-                  ),
-                ),
-                widget.trip.driver['driver_id'] != '' ? ListTile(
-                  contentPadding: const EdgeInsets.only(left: 0),
-                  leading: Container(
-                    width: SizeConfig.safeBlockHorizontal * 13,
-                    height: SizeConfig.blockSizeVertical * 8,
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: NetworkImage(widget.trip.driver['driver_profile']),
-                      ),
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  title: Text(widget.trip.driver['driver_name'], style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4, fontWeight: FontWeight.bold),),
-                  subtitle: Row(
-                    children: [
-                      Icon(Icons.star, size: SizeConfig.safeBlockHorizontal * 6,),
-                      Text('${widget.trip.driver['rating'].toStringAsFixed(1)}', style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 4,),)
-                    ],
-                  ),
-                ) : Container(),
-                widget.trip.driver['driver_id'] != '' ? Text(
-                  'Vehicle:${widget.trip.vehicle['model']}',
-                  style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 5, fontWeight: FontWeight.normal),
-                ) : Container(),
-                Text(
-                  'Type: ${widget.trip.vehicleType}',
-                  style: TextStyle(fontSize: SizeConfig.safeBlockHorizontal * 5, fontWeight: FontWeight.normal),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Pickup Location',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 6,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  widget.trip.changedPickupAddress == '' ? widget.trip.pickupAddress : widget.trip.changedPickupAddress,
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                widget.trip.changedPickupAddress != '' ? Text(
-                  'Changed from: ${widget.trip.pickupAddress}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                    overflow: TextOverflow.fade,
-                    color: Colors.red
-                  ),
-                  maxLines: 2,
-                ) : Container(),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.7,),
-                Text(
-                  'Drop-off Location',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 6,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  widget.trip.changedDropOffAddress == '' ? widget.trip.dropOffAddress : widget.trip.changedDropOffAddress,
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.blockSizeVertical* 1.2,),
-                widget.trip.changedDropOffAddress != '' ? Text(
-                  'Changed from: ${widget.trip.dropOffAddress}',
-                  style: TextStyle(
-                      fontSize: SizeConfig.safeBlockHorizontal * 5,
-                      fontWeight: FontWeight.normal,
-                      overflow: TextOverflow.fade,
-                      color: Colors.red
-                  ),
-                  maxLines: 2,
-                ): Container(),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                RichText(
-                  text: TextSpan(
-                      text: 'Status: ',
-                      style: TextStyle(
-                          fontSize: SizeConfig.safeBlockHorizontal * 5,
-                          color: Colors.black,
-                          fontWeight: FontWeight.normal
-                      ),
-                      children: [
-                        TextSpan(text: widget.trip.status , style: TextStyle(color: widget.trip.status == 'cancelled' ? Colors.red : Colors.black))
-                      ]
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-                Text(
-                  'Total Amount: ₱${discountFare2.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.safeBlockHorizontal * 5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const Divider(thickness: 1.5,),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1.2,),
-              ]),
-            ),
-          ],
+              )),
+            ],
+          ),
         ),
+
+        // Payment Information
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Payment Information', Icons.payment),
+              const SizedBox(height: 16),
+              _buildFareRow('Fare per Passenger', trip.farePerPassenger),
+              _buildFareRow('Total Fare', trip.fareTotal),
+              const SizedBox(height: 12),
+              _buildInfoRow('Payment Method', trip.paymentMethod),
+            ],
+          ),
+        ),
+
+        // Trip Status
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader('Trip Status', Icons.info),
+              const SizedBox(height: 16),
+              _buildInfoRow('Status', trip.status.toUpperCase()),
+              _buildInfoRow(
+                'Started',
+                DateFormat('MMMM dd, yyyy - hh:mm a')
+                    .format(trip.startedAt.toDate()),
+              ),
+              _buildInfoRow(
+                'Completed',
+                DateFormat('MMMM dd, yyyy - hh:mm a')
+                    .format(trip.completedAt.toDate()),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 20, color: Colors.blue.shade700),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocationRow(
+      IconData icon,
+      Color color,
+      String label,
+      String address,
+      ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                address,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey.shade700),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFareRow(
+      String label,
+      double amount, {
+        bool isDiscount = false,
+        bool isTotal = false,
+      }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 14,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+              color: isTotal ? Colors.black87 : Colors.grey[600],
+            ),
+          ),
+          Text(
+            '${isDiscount ? '-' : ''}₱${amount.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: isTotal ? 18 : 14,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
+              color: isTotal
+                  ? Colors.green.shade700
+                  : isDiscount
+                  ? Colors.red
+                  : Colors.black87,
+            ),
+          ),
+        ],
       ),
     );
   }
