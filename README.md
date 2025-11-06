@@ -1,16 +1,25 @@
-# pakyaw
+# 🏆 Pakyaw App
 
-A new Flutter project.
+A ride-hailing application built to make commuting in **Ormoc City** more convenient and accessible.  
+Developed by **me and my team**, earning **1st Runner-Up (2nd Place)** and a **₱30,000** prize at the **2025 Ormoc Business Model & Prototype Competition**. 🎉💙
 
-## Getting Started
+## About
+**Pakyaw App** aims to provide a simple, efficient, and affordable ride-hailing experience for Ormoc commuters — bridging technology and accessibility to enhance local transportation.
 
-This project is a starting point for a Flutter application.
+## Developers
+- Ernst Livin Gabriel Cahiang
+- Lei Alexis Florito Concordia
+- Jeddah Gwyneth Cambronero Coronel
+- James Adrian Arradaza Denoy
+- Andres Umpad Manili
 
-A few resources to get you started if this is your first Flutter project:
+## Special Thanks
+- **Mr. Mark Samuel Taripe** — for his guidance and support throughout the project
+- **Mr. Lance Gorduiz** — STI College Ormoc alumnus and original creator of the Pakyaw Business Model
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Competition Achievement
+🏅 **1st Runner-Up (2nd Place)** — Ormoc Business Model & Prototype Competition 2025  
+💰 **₱30,000 Cash Prize**
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+Made with ❤️ by BSIT Students of **STI College Ormoc**
